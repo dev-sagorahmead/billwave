@@ -1,0 +1,10 @@
+node_modules/
+client/node_modules/
+.env
+*.log
+server/data/dish.db-journal
+server/data/dish.db-shm
+server/data/dish.db-wal
+.DS_Store
+dist/
+client/dist/
