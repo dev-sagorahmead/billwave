@@ -71,21 +71,24 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error: ' + (err.message || err) });
 });
 
-if (process.env.PORT) {
-  app.listen(process.env.PORT, () => {
-    console.log(`Dish Cable SaaS Server listening on process.env.PORT: ${process.env.PORT}`);
-  });
-} else {
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`=======================================================`);
-    console.log(`Dish Cable SaaS Server listening on:`);
-    console.log(`- Local:   http://localhost:${PORT}`);
-    console.log(`- Network: http://192.168.1.4:${PORT}`);
-    console.log(`Health check: http://192.168.1.4:${PORT}/api/health`);
-    console.log(`=======================================================`);
-  });
+if (require.main === module) {
+  if (process.env.PORT) {
+    app.listen(process.env.PORT, () => {
+      console.log(`Dish Cable SaaS Server listening on process.env.PORT: ${process.env.PORT}`);
+    });
+  } else {
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`=======================================================`);
+      console.log(`Dish Cable SaaS Server listening on:`);
+      console.log(`- Local:   http://localhost:${PORT}`);
+      console.log(`- Network: http://192.168.1.4:${PORT}`);
+      console.log(`Health check: http://192.168.1.4:${PORT}/api/health`);
+      console.log(`=======================================================`);
+    });
+  }
 }
 
 module.exports = app;
+
 
 
