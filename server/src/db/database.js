@@ -8,11 +8,31 @@ const fs = require('fs');
 const dataDir = path.join(__dirname, '..', '..', 'data');
 ws('DB 2: Checking dataDir: ' + dataDir);
 if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
+  fs.mkdirSync(dataDir, { recursive: true, mode: 0o777 });
 }
 
 const dbPath = path.join(dataDir, 'dish.db');
-ws('DB 3: Opening SQLite at ' + dbPath);
+ws('DB 2b: dbPath: ' + dbPath + ' | Exists: ' + fs.existsSync(dbPath));
+if (fs.existsSync(dbPath)) {
+  try {
+    const st = fs.statSync(dbPath);
+    ws('DB 2c: dish.db found! Size: ' + st.size + ' bytes, Mode: ' + st.mode.toString(8));
+  } catch (statErr) {
+    ws('DB 2c stat error: ' + statErr.message);
+  }
+}
+
+ws('DB 3a: Testing in-memory SQLite...');
+try {
+  const mem = new Database(':memory:');
+  mem.exec('CREATE TABLE test (id INT)');
+  mem.close();
+  ws('DB 3a SUCCESS: in-memory SQLite works!');
+} catch (memErr) {
+  ws('DB 3a FAILED: ' + memErr.message);
+}
+
+ws('DB 3b: Opening SQLite at ' + dbPath);
 
 let db;
 try {
@@ -22,6 +42,7 @@ try {
   ws('DB 4 FATAL: Could not open database file: ' + (openErr.stack || openErr.message || openErr));
   throw openErr;
 }
+
 
 // Enable WAL mode for high concurrency & performance (with fallback for restricted shared hosting)
 try {
