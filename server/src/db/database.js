@@ -1,14 +1,20 @@
+const ws = (global && global.writeStatus) || console.log;
+
+ws('DB 1: Loading better-sqlite3 module...');
 const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
 
 const dataDir = path.join(__dirname, '..', '..', 'data');
+ws('DB 2: Checking dataDir: ' + dataDir);
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
 
 const dbPath = path.join(dataDir, 'dish.db');
+ws('DB 3: Opening SQLite at ' + dbPath);
 const db = new Database(dbPath);
+ws('DB 4: SQLite connected! Setting pragmas...');
 
 // Enable WAL mode for high concurrency & performance (with fallback for restricted shared hosting)
 try {
@@ -20,9 +26,10 @@ try {
   } catch (e) {}
 }
 db.pragma('foreign_keys = ON');
-
+ws('DB 5: Pragmas set.');
 
 function initSchema() {
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS companies (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -184,6 +191,7 @@ function initSchema() {
 }
 
 initSchema();
+ws('DB 6: initSchema() executed successfully.');
 
 try {
   db.prepare('ALTER TABLE payments ADD COLUMN billing_month TEXT').run();
@@ -228,4 +236,7 @@ try {
   db.prepare("INSERT INTO platform_settings (key, value) VALUES ('login_brand_subtitle', 'Manage. Collect. Grow.') ON CONFLICT(key) DO UPDATE SET value = 'Manage. Collect. Grow.'").run();
 } catch (e) {}
 
+ws('DB 7: database.js fully ready!');
+
 module.exports = db;
+

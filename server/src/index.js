@@ -1,22 +1,36 @@
+const ws = (global && global.writeStatus) || console.log;
+
+ws('INDEX 1: Loading express, cors, path...');
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
 require('dotenv').config();
 
-// Initialize DB and ensure seed is run if empty
+ws('INDEX 2: Loading ./db/database...');
 require('./db/database');
+ws('INDEX 3: ./db/database loaded!');
+
+ws('INDEX 4: Running ./db/seed check...');
 try {
   require('./db/seed');
+  ws('INDEX 5: ./db/seed finished.');
 } catch (e) {
-  console.log('Seed info:', e.message);
+  ws('INDEX 5: Seed warning: ' + e.message);
 }
 
-// Start automatic 1st-of-the-month billing scheduler
-const { startAutoBillingScheduler } = require('./services/autoBilling');
-startAutoBillingScheduler();
+ws('INDEX 6: Starting autoBilling scheduler...');
+try {
+  const { startAutoBillingScheduler } = require('./services/autoBilling');
+  startAutoBillingScheduler();
+  ws('INDEX 7: autoBilling scheduler started.');
+} catch (e) {
+  ws('INDEX 7: autoBilling warning: ' + e.message);
+}
 
+ws('INDEX 8: Creating express app instance...');
 const app = express();
 const PORT = process.env.PORT || 5000;
+
 
 // Middleware
 app.use(cors());

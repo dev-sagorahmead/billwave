@@ -23,6 +23,16 @@ function writeStatus(msg) {
   }
 }
 
+global.writeStatus = writeStatus;
+
+process.on('uncaughtException', (err) => {
+  writeStatus('UNCAUGHT EXCEPTION: ' + (err.stack || err.message || err));
+});
+
+process.on('unhandledRejection', (reason) => {
+  writeStatus('UNHANDLED REJECTION: ' + (reason.stack || reason.message || reason));
+});
+
 writeStatus('STARTUP: Node.js process initiated in ' + __dirname);
 writeStatus('ENV: Node ' + process.version + ' (' + process.platform + ' ' + process.arch + ')');
 
