@@ -38,16 +38,9 @@ writeStatus('ENV: Node ' + process.version + ' (' + process.platform + ' ' + pro
 
 let handler;
 try {
-  try {
-    require('dotenv').config();
-    writeStatus('STEP 1: dotenv loaded');
-  } catch (dotenvErr) {
-    writeStatus('STEP 1: dotenv skipped (using production defaults)');
-  }
-
-  writeStatus('STEP 2: Loading main Express server & database...');
+  writeStatus('STEP 1: Loading main Express server & database...');
   handler = require('./server/src/index');
-  writeStatus('STEP 2 OK: Express server loaded successfully! System fully operational.');
+  writeStatus('STEP 1 OK: Express server loaded successfully! System fully operational.');
 } catch (startupErr) {
   writeStatus('FATAL STARTUP ERROR: ' + (startupErr.stack || startupErr.message || startupErr));
   
