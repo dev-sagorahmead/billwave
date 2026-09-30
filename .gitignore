@@ -2,7 +2,7 @@ node_modules/
 client/node_modules/
 .env
 *.log
-server/data/*.db
+# server/data/*.db
 server/data/*.db-journal
 server/data/*.db-shm
 server/data/*.db-wal

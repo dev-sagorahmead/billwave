@@ -13,20 +13,28 @@ if (!fs.existsSync(dataDir)) {
 
 const dbPath = path.join(dataDir, 'dish.db');
 ws('DB 3: Opening SQLite at ' + dbPath);
-const db = new Database(dbPath);
-ws('DB 4: SQLite connected! Setting pragmas...');
+
+let db;
+try {
+  db = new Database(dbPath, { timeout: 7000 });
+  ws('DB 4: SQLite connected! Setting pragmas...');
+} catch (openErr) {
+  ws('DB 4 FATAL: Could not open database file: ' + (openErr.stack || openErr.message || openErr));
+  throw openErr;
+}
 
 // Enable WAL mode for high concurrency & performance (with fallback for restricted shared hosting)
 try {
   db.pragma('journal_mode = WAL');
 } catch (walErr) {
-  console.warn('SQLite WAL mode warning (fallback to DELETE):', walErr.message);
+  ws('DB 4 WARNING: WAL mode not supported, falling back to DELETE: ' + walErr.message);
   try {
     db.pragma('journal_mode = DELETE');
   } catch (e) {}
 }
 db.pragma('foreign_keys = ON');
 ws('DB 5: Pragmas set.');
+
 
 function initSchema() {
 
