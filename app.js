@@ -38,17 +38,16 @@ writeStatus('ENV: Node ' + process.version + ' (' + process.platform + ' ' + pro
 
 let handler;
 try {
-  writeStatus('STEP 1: Loading dotenv...');
-  require('dotenv').config();
-  writeStatus('STEP 1 OK: dotenv loaded');
+  try {
+    require('dotenv').config();
+    writeStatus('STEP 1: dotenv loaded');
+  } catch (dotenvErr) {
+    writeStatus('STEP 1: dotenv skipped (using production defaults)');
+  }
 
-  writeStatus('STEP 2: Testing better-sqlite3 module...');
-  require('better-sqlite3');
-  writeStatus('STEP 2 OK: better-sqlite3 loaded without errors');
-
-  writeStatus('STEP 3: Loading main Express server...');
+  writeStatus('STEP 2: Loading main Express server & database...');
   handler = require('./server/src/index');
-  writeStatus('STEP 3 OK: Express server loaded successfully! System fully operational.');
+  writeStatus('STEP 2 OK: Express server loaded successfully! System fully operational.');
 } catch (startupErr) {
   writeStatus('FATAL STARTUP ERROR: ' + (startupErr.stack || startupErr.message || startupErr));
   
@@ -63,11 +62,22 @@ try {
         <title>BillWave Diagnostic</title>
       </head>
       <body style="font-family: sans-serif; background: #0f172a; color: #f8fafc; padding: 30px; margin: 0;">
-        <div style="max-width: 800px; margin: 0 auto; background: #1e293b; border: 1px solid #ef4444; border-radius: 12px; padding: 24px;">
-          <h2 style="color: #ef4444; margin-top: 0;">🚨 BillWave Server Diagnostics</h2>
-          <p style="color: #cbd5e1;">LiteSpeed ও Node.js চালু হয়েছে, তবে মডিউল লোড করার সময় সমস্যা হয়েছে:</p>
-          <pre style="background: #090d16; color: #fca5a5; padding: 16px; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; font-size: 13px;">${startupErr.stack || startupErr.message || startupErr}</pre>
-          <p style="color: #64748b; font-size: 12px;">Node: ${process.version} | Platform: ${process.platform}</p>
+        <div style="max-width: 800px; margin: 0 auto; background: #1e293b; border: 1px solid #ef4444; border-radius: 12px; padding: 24px; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+          <h2 style="color: #ef4444; margin-top: 0; display: flex; align-items: center; gap: 8px;">
+            <span>🚨</span> BillWave Server Diagnostics
+          </h2>
+          <p style="color: #cbd5e1; font-size: 15px;">
+            LiteSpeed ও Node.js চালু হয়েছে, তবে মডিউল লোড করার সময় সমস্যা হয়েছে:
+          </p>
+          <pre style="background: #090d16; color: #fca5a5; padding: 16px; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; font-size: 13px; border: 1px solid #334155;">${startupErr.stack || startupErr.message || startupErr}</pre>
+          <p style="background: #334155; padding: 12px; border-radius: 6px; color: #f1f5f9; font-size: 13px;">
+            💡 <strong>সমাধান:</strong> cPanel-এ <em>Setup Node.js App</em> পেজে গিয়ে <strong>"Run NPM Install"</strong> বাটনে ক্লিক করে প্যাকেজগুলো ইনস্টল করুন, তারপর <strong>"RESTART"</strong> করুন।
+          </p>
+          <hr style="border: 0; border-top: 1px solid #334155; margin: 20px 0;">
+          <div style="color: #64748b; font-size: 12px; display: flex; justify-content: space-between;">
+            <span>Node: ${process.version}</span>
+            <span>Platform: ${process.platform}</span>
+          </div>
         </div>
       </body>
       </html>
