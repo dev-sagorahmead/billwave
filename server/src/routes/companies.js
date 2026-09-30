@@ -1,8 +1,40 @@
 const express = require('express');
 const router = express.Router();
+const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
 const db = require('../db/database');
 const { authenticateToken } = require('../middleware/auth');
 const { enforceTenant } = require('../middleware/tenant');
+
+// Configure logo uploads in server/uploads
+const uploadsDir = path.join(__dirname, '..', '..', 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, uploadsDir);
+  },
+  filename: function (req, file, cb) {
+    const ext = path.extname(file.originalname).toLowerCase() || '.png';
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, 'company-logo-' + uniqueSuffix + ext);
+  }
+});
+
+const upload = multer({
+  storage: storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB max
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files (PNG, JPG, JPEG, WEBP, SVG) are allowed'), false);
+    }
+  }
+});
 
 router.use(authenticateToken, enforceTenant);
 
@@ -162,6 +194,29 @@ router.get('/settings', (req, res) => {
   res.json(company);
 });
 
+// POST /api/company/upload-logo
+router.post('/upload-logo', upload.single('logo'), (req, res) => {
+  if (!['company_admin', 'super_admin'].includes(req.user.role)) {
+    return res.status(403).json({ error: 'Access denied: Company Admin only' });
+  }
+
+  if (!req.file) {
+    return res.status(400).json({ error: 'No logo image file was uploaded' });
+  }
+
+  const companyId = req.user.role === 'super_admin' ? (req.body.company_id || 1) : req.user.company_id;
+  const logoUrl = `/uploads/${req.file.filename}`;
+
+  db.prepare('UPDATE companies SET logo = ? WHERE id = ?').run(logoUrl, companyId);
+  const updatedCompany = db.prepare('SELECT * FROM companies WHERE id = ?').get(companyId);
+
+  res.json({
+    message: 'Logo uploaded successfully',
+    logoUrl,
+    company: updatedCompany
+  });
+});
+
 // PUT /api/company/settings
 router.put('/settings', (req, res) => {
   if (!['company_admin', 'super_admin'].includes(req.user.role)) {
@@ -169,7 +224,7 @@ router.put('/settings', (req, res) => {
   }
 
   const companyId = req.user.role === 'super_admin' ? (req.body.company_id || 1) : req.user.company_id;
-  const { name, owner_name, phone, email, address, logo, customer_prefix, notes } = req.body;
+  const { name, owner_name, phone, email, address, logo, customer_prefix, notes, language } = req.body;
 
   db.prepare(`
     UPDATE companies
@@ -178,13 +233,30 @@ router.put('/settings', (req, res) => {
         phone = COALESCE(?, phone),
         email = COALESCE(?, email),
         address = COALESCE(?, address),
-        logo = COALESCE(?, logo),
+        logo = ?,
         customer_prefix = COALESCE(?, customer_prefix),
-        notes = COALESCE(?, notes)
+        notes = COALESCE(?, notes),
+        language = COALESCE(?, language)
     WHERE id = ?
-  `).run(name, owner_name, phone, email, address, logo, customer_prefix ? customer_prefix.toUpperCase().trim() : null, notes, companyId);
+  `).run(
+    name,
+    owner_name,
+    phone,
+    email,
+    address,
+    logo !== undefined ? logo : null,
+    customer_prefix ? customer_prefix.toUpperCase().trim() : null,
+    notes,
+    language ? (language === 'en' ? 'en' : 'bn') : null,
+    companyId
+  );
 
-  res.json({ message: 'Company settings updated successfully' });
+  const updatedCompany = db.prepare('SELECT * FROM companies WHERE id = ?').get(companyId);
+
+  res.json({
+    message: 'Company settings updated successfully',
+    company: updatedCompany
+  });
 });
 
 module.exports = router;

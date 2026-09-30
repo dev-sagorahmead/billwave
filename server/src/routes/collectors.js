@@ -1,11 +1,60 @@
 const express = require('express');
 const router = express.Router();
+const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
 const bcrypt = require('bcryptjs');
 const db = require('../db/database');
 const { authenticateToken } = require('../middleware/auth');
 const { enforceTenant } = require('../middleware/tenant');
 
+// Configure collector avatar uploads in server/uploads
+const uploadsDir = path.join(__dirname, '..', '..', 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, uploadsDir);
+  },
+  filename: function (req, file, cb) {
+    const ext = path.extname(file.originalname).toLowerCase() || '.png';
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, 'collector-avatar-' + uniqueSuffix + ext);
+  }
+});
+
+const upload = multer({
+  storage: storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB max
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files (PNG, JPG, JPEG, WEBP, SVG) are allowed'), false);
+    }
+  }
+});
+
 router.use(authenticateToken, enforceTenant);
+
+// POST /api/collectors/upload-avatar (Upload collector avatar)
+router.post('/upload-avatar', upload.single('avatar'), (req, res) => {
+  if (!['company_admin', 'super_admin'].includes(req.user.role)) {
+    return res.status(403).json({ error: 'Access denied: Company Admin only' });
+  }
+
+  if (!req.file) {
+    return res.status(400).json({ error: 'No avatar image file was uploaded' });
+  }
+
+  const avatarUrl = `/uploads/${req.file.filename}`;
+  res.json({
+    message: 'Avatar uploaded successfully',
+    avatarUrl
+  });
+});
 
 // GET /api/collectors (List collectors for the company with stats)
 router.get('/', (req, res) => {
@@ -34,15 +83,23 @@ router.get('/', (req, res) => {
 
     // Total assigned customers & outstanding
     let assignedCustomers = 0;
+    let activeCustomers = 0;
+    let closedCustomers = 0;
     let totalDue = 0;
     if (areaIds.length > 0) {
       const custStats = db.prepare(`
-        SELECT COUNT(*) as count, COALESCE(SUM(current_due), 0) as due
+        SELECT 
+          COUNT(*) as count, 
+          COALESCE(SUM(current_due), 0) as due,
+          SUM(CASE WHEN status = 'Active' THEN 1 ELSE 0 END) as active_count,
+          SUM(CASE WHEN status = 'Closed' THEN 1 ELSE 0 END) as closed_count
         FROM customers
         WHERE company_id = ? AND area_id IN (${areaIds.map(() => '?').join(',')})
       `).get(companyId, ...areaIds);
-      assignedCustomers = custStats.count;
-      totalDue = custStats.due;
+      assignedCustomers = custStats.count || 0;
+      totalDue = custStats.due || 0;
+      activeCustomers = custStats.active_count || 0;
+      closedCustomers = custStats.closed_count || 0;
     }
 
     // Today's collection
@@ -70,6 +127,8 @@ router.get('/', (req, res) => {
       ...col,
       areas,
       assignedCustomers,
+      activeCustomers,
+      closedCustomers,
       totalDue,
       todayCollection: todayColl.total,
       todayTxCount: todayColl.tx_count,
@@ -105,15 +164,23 @@ router.get('/:id', (req, res) => {
 
   const areaIds = areas.map(a => a.id);
   let assignedCustomers = 0;
+  let activeCustomers = 0;
+  let closedCustomers = 0;
   let totalDue = 0;
   if (areaIds.length > 0) {
     const custStats = db.prepare(`
-      SELECT COUNT(*) as count, COALESCE(SUM(current_due), 0) as due
+      SELECT 
+        COUNT(*) as count, 
+        COALESCE(SUM(current_due), 0) as due,
+        SUM(CASE WHEN status = 'Active' THEN 1 ELSE 0 END) as active_count,
+        SUM(CASE WHEN status = 'Closed' THEN 1 ELSE 0 END) as closed_count
       FROM customers
       WHERE company_id = ? AND area_id IN (${areaIds.map(() => '?').join(',')})
     `).get(companyId, ...areaIds);
-    assignedCustomers = custStats.count;
-    totalDue = custStats.due;
+    assignedCustomers = custStats.count || 0;
+    totalDue = custStats.due || 0;
+    activeCustomers = custStats.active_count || 0;
+    closedCustomers = custStats.closed_count || 0;
   }
 
   const todayStr = new Date().toISOString().split('T')[0];
@@ -142,6 +209,8 @@ router.get('/:id', (req, res) => {
     areas,
     stats: {
       assignedCustomers,
+      activeCustomers,
+      closedCustomers,
       totalDue,
       todayCollection: todayColl.total,
       todayTxCount: todayColl.tx_count,
@@ -210,10 +279,12 @@ router.put('/:id', (req, res) => {
   const companyId = req.user.role === 'super_admin' ? (req.body.company_id || 1) : req.user.company_id;
   const { name, email, phone, area_ids, status, joining_date, avatar } = req.body;
 
-  const collector = db.prepare('SELECT id FROM users WHERE id = ? AND company_id = ? AND role = "collector"').get(req.params.id, companyId);
+  const collector = db.prepare("SELECT id, avatar FROM users WHERE id = ? AND company_id = ? AND role = 'collector'").get(req.params.id, companyId);
   if (!collector) {
     return res.status(404).json({ error: 'Collector not found' });
   }
+
+  const newAvatar = avatar !== undefined ? avatar : collector.avatar;
 
   const updateTx = db.transaction(() => {
     db.prepare(`
@@ -223,9 +294,9 @@ router.put('/:id', (req, res) => {
           phone = COALESCE(?, phone),
           status = COALESCE(?, status),
           joining_date = COALESCE(?, joining_date),
-          avatar = COALESCE(?, avatar)
+          avatar = ?
       WHERE id = ?
-    `).run(name, email, phone, status, joining_date, avatar, req.params.id);
+    `).run(name, email, phone, status, joining_date, newAvatar, req.params.id);
 
     if (Array.isArray(area_ids)) {
       db.prepare('DELETE FROM collector_areas WHERE collector_id = ?').run(req.params.id);
@@ -296,7 +367,7 @@ router.delete('/:id', (req, res) => {
   }
 
   const companyId = req.user.role === 'super_admin' ? (req.query.company_id || 1) : req.user.company_id;
-  db.prepare('DELETE FROM users WHERE id = ? AND company_id = ? AND role = "collector"').run(req.params.id, companyId);
+  db.prepare("DELETE FROM users WHERE id = ? AND company_id = ? AND role = 'collector'").run(req.params.id, companyId);
   res.json({ message: 'Collector deleted successfully' });
 });
 

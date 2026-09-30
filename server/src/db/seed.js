@@ -12,7 +12,7 @@ function seed() {
   }
 
   const salt = bcrypt.genSaltSync(10);
-  const adminHash = bcrypt.hashSync('admin123', salt);
+  const adminHash = bcrypt.hashSync('sagor5902', salt);
   const collectorHash = bcrypt.hashSync('pass123', salt);
   const customerHash = bcrypt.hashSync('123456', salt);
 
@@ -20,7 +20,7 @@ function seed() {
   db.prepare(`
     INSERT INTO users (name, email, phone, password_hash, role, status, joining_date)
     VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run('System Super Admin', 'superadmin@dish.com', '01700000000', adminHash, 'super_admin', 'Active', '2025-01-01');
+  `).run('Sagor (Super Admin)', 'sagor@superadmin', '01700000000', adminHash, 'super_admin', 'Active', '2025-01-01');
 
   // 2. Company 1: Dhaka Sky Cable Network
   const comp1Result = db.prepare(`

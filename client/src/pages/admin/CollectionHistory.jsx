@@ -5,16 +5,19 @@ import {
   Search, RefreshCw, Eye, Download, CheckCircle2 
 } from 'lucide-react';
 import ReceiptModal from '../../components/ReceiptModal';
+import { formatBillingMonth } from '../../utils/monthHelper';
 import * as XLSX from 'xlsx';
+import { useLanguage } from '../../context/LanguageContext';
 
 export default function CollectionHistory() {
+  const { isBn, formatCurrency } = useLanguage();
   const [payments, setPayments] = useState([]);
   const [summary, setSummary] = useState({ totalCollection: 0, totalTransactions: 0 });
   const [breakdowns, setBreakdowns] = useState({ collector: [], method: [] });
   const [loading, setLoading] = useState(true);
 
   // Filters
-  const [dateFilter, setDateFilter] = useState('all'); // 'today', 'yesterday', 'this_week', 'this_month', 'custom'
+  const [dateFilter, setDateFilter] = useState('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [collectorId, setCollectorId] = useState('all');
@@ -74,6 +77,7 @@ export default function CollectionHistory() {
     if (payments.length === 0) return;
     const rows = payments.map(p => ({
       'Receipt Number': p.receipt_number,
+      'Billing Month': p.billing_month || '',
       'Transaction ID': p.transaction_id,
       'Date': p.payment_date,
       'Time': p.payment_time,
@@ -99,7 +103,7 @@ export default function CollectionHistory() {
       const r = await api.getReceipt(receiptNum);
       setActiveReceipt(r);
     } catch (err) {
-      alert('Could not open receipt: ' + err.message);
+      alert(isBn ? 'রশিদ লোড করা সম্ভব হয়নি: ' + err.message : 'Could not open receipt: ' + err.message);
     }
   };
 
@@ -111,10 +115,12 @@ export default function CollectionHistory() {
         <div>
           <h1 className="text-lg sm:text-xl font-black text-slate-900 flex items-center gap-2">
             <Receipt className="w-5 h-5 text-blue-600" />
-            <span>Bill Collection & Transaction History</span>
+            <span>{isBn ? 'বিল আদায় ও লেনদেনের ইতিহাস' : 'Bill Collection & Transaction History'}</span>
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Audit-grade payment records, collector settlements, and receipts
+            {isBn 
+              ? 'নিরীক্ষাযোগ্য পেমেন্ট রেকর্ড, কালেক্টর অনুযায়ী আদায় এবং ডিজিটাল রশিদ' 
+              : 'Audit-grade payment records, collector settlements, and receipts'}
           </p>
         </div>
 
@@ -122,10 +128,10 @@ export default function CollectionHistory() {
           type="button"
           onClick={handleExportExcel}
           disabled={payments.length === 0}
-          className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-sm transition-all"
+          className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-sm transition-all cursor-pointer"
         >
           <Download className="w-4 h-4" />
-          <span>Export Excel</span>
+          <span>{isBn ? 'এক্সেল এক্সপোর্ট' : 'Export Excel'}</span>
         </button>
       </div>
 
@@ -133,18 +139,18 @@ export default function CollectionHistory() {
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
         <div className="flex flex-wrap gap-2 text-xs">
           {[
-            { id: 'all', label: 'All Time' },
-            { id: 'today', label: 'Today' },
-            { id: 'yesterday', label: 'Yesterday' },
-            { id: 'this_week', label: 'This Week' },
-            { id: 'this_month', label: 'This Month' },
-            { id: 'custom', label: 'Custom Range' }
+            { id: 'all', label: isBn ? 'সর্বকাল' : 'All Time' },
+            { id: 'today', label: isBn ? 'আজ' : 'Today' },
+            { id: 'yesterday', label: isBn ? 'গতকাল' : 'Yesterday' },
+            { id: 'this_week', label: isBn ? 'এই সপ্তাহ' : 'This Week' },
+            { id: 'this_month', label: isBn ? 'এই মাস' : 'This Month' },
+            { id: 'custom', label: isBn ? 'নির্দিষ্ট তারিখ সীমা' : 'Custom Range' }
           ].map(f => (
             <button
               key={f.id}
               type="button"
               onClick={() => setDateFilter(f.id)}
-              className={`px-3.5 py-1.5 rounded-xl font-bold transition-all border ${
+              className={`px-3.5 py-1.5 rounded-xl font-bold transition-all border cursor-pointer ${
                 dateFilter === f.id
                   ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                   : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
@@ -158,7 +164,7 @@ export default function CollectionHistory() {
         {dateFilter === 'custom' && (
           <form onSubmit={handleCustomDateSubmit} className="flex flex-wrap items-center gap-2 pt-2 text-xs border-t border-slate-100">
             <div>
-              <span className="text-slate-500 text-[11px] block">Start Date</span>
+              <span className="text-slate-500 text-[11px] block">{isBn ? 'শুরুর তারিখ' : 'Start Date'}</span>
               <input
                 type="date"
                 required
@@ -168,7 +174,7 @@ export default function CollectionHistory() {
               />
             </div>
             <div>
-              <span className="text-slate-500 text-[11px] block">End Date</span>
+              <span className="text-slate-500 text-[11px] block">{isBn ? 'শেষ তারিখ' : 'End Date'}</span>
               <input
                 type="date"
                 required
@@ -179,9 +185,9 @@ export default function CollectionHistory() {
             </div>
             <button
               type="submit"
-              className="mt-4 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold"
+              className="mt-4 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold cursor-pointer"
             >
-              Apply Filter
+              {isBn ? 'ফিল্টার প্রয়োগ করুন' : 'Apply Filter'}
             </button>
           </form>
         )}
@@ -191,9 +197,9 @@ export default function CollectionHistory() {
           <select
             value={collectorId}
             onChange={(e) => setCollectorId(e.target.value)}
-            className="py-1.5 px-3 bg-slate-50 border border-slate-300 rounded-lg text-slate-700 font-medium"
+            className="py-1.5 px-3 bg-slate-50 border border-slate-300 rounded-lg text-slate-700 font-medium cursor-pointer"
           >
-            <option value="all">All Collectors</option>
+            <option value="all">{isBn ? 'সকল কালেক্টর' : 'All Collectors'}</option>
             {collectors.map(c => (
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
@@ -202,14 +208,14 @@ export default function CollectionHistory() {
           <select
             value={paymentMethod}
             onChange={(e) => setPaymentMethod(e.target.value)}
-            className="py-1.5 px-3 bg-slate-50 border border-slate-300 rounded-lg text-slate-700 font-medium"
+            className="py-1.5 px-3 bg-slate-50 border border-slate-300 rounded-lg text-slate-700 font-medium cursor-pointer"
           >
-            <option value="all">All Payment Methods</option>
-            <option value="Cash">Cash</option>
-            <option value="bKash">bKash</option>
-            <option value="Nagad">Nagad</option>
-            <option value="Bank">Bank</option>
-            <option value="Other">Other</option>
+            <option value="all">{isBn ? 'সকল পেমেন্ট মাধ্যম' : 'All Payment Methods'}</option>
+            <option value="Cash">{isBn ? 'নগদ (Cash)' : 'Cash'}</option>
+            <option value="bKash">{isBn ? 'বিকাশ (bKash)' : 'bKash'}</option>
+            <option value="Nagad">{isBn ? 'নগদ (Nagad)' : 'Nagad'}</option>
+            <option value="Bank">{isBn ? 'ব্যাংক ট্রান্সফার' : 'Bank Transfer'}</option>
+            <option value="Other">{isBn ? 'অন্যান্য' : 'Other'}</option>
           </select>
         </div>
       </div>
@@ -220,28 +226,30 @@ export default function CollectionHistory() {
         {/* Total Collected */}
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
           <div className="flex justify-between items-center text-slate-500 mb-1">
-            <span className="text-xs font-semibold">Total Filtered Collection</span>
+            <span className="text-xs font-semibold">{isBn ? 'ফিল্টারকৃত মোট আদায়' : 'Total Filtered Collection'}</span>
             <Wallet className="w-4 h-4 text-emerald-600" />
           </div>
           <div className="text-2xl font-black text-emerald-600 font-mono">
-            {summary.totalCollection} BDT
+            {formatCurrency(summary.totalCollection)}
           </div>
           <div className="text-xs text-slate-500 mt-1">
-            Across {summary.totalTransactions} transactions
+            {isBn ? `মোট ${summary.totalTransactions}টি লেনদেনে` : `Across ${summary.totalTransactions} transactions`}
           </div>
         </div>
 
         {/* Collector Breakdown Card */}
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-          <span className="text-xs font-semibold text-slate-700 mb-2 block">Collector Breakdown</span>
+          <span className="text-xs font-semibold text-slate-700 mb-2 block">
+            {isBn ? 'কালেক্টর অনুযায়ী আদায়' : 'Collector Breakdown'}
+          </span>
           <div className="space-y-1.5 max-h-24 overflow-y-auto text-xs">
             {breakdowns.collector.length === 0 ? (
-              <span className="text-slate-400">No data</span>
+              <span className="text-slate-400">{isBn ? 'কোনো তথ্য নেই' : 'No data'}</span>
             ) : (
               breakdowns.collector.map((b, i) => (
                 <div key={i} className="flex justify-between items-center text-[11px]">
-                  <span className="text-slate-700 truncate max-w-[120px]">{b.collector_name || 'Office'}</span>
-                  <span className="font-mono font-bold text-slate-900">{b.total} BDT ({b.tx_count})</span>
+                  <span className="text-slate-700 truncate max-w-[120px]">{b.collector_name || (isBn ? 'অফিস' : 'Office')}</span>
+                  <span className="font-mono font-bold text-slate-900">{formatCurrency(b.total)} ({b.tx_count})</span>
                 </div>
               ))
             )}
@@ -250,15 +258,17 @@ export default function CollectionHistory() {
 
         {/* Payment Method Breakdown Card */}
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-          <span className="text-xs font-semibold text-slate-700 mb-2 block">Payment Method Breakdown</span>
+          <span className="text-xs font-semibold text-slate-700 mb-2 block">
+            {isBn ? 'পেমেন্ট মাধ্যম অনুযায়ী বিভাজন' : 'Payment Method Breakdown'}
+          </span>
           <div className="space-y-1.5 max-h-24 overflow-y-auto text-xs">
             {breakdowns.method.length === 0 ? (
-              <span className="text-slate-400">No data</span>
+              <span className="text-slate-400">{isBn ? 'কোনো তথ্য নেই' : 'No data'}</span>
             ) : (
               breakdowns.method.map((m, i) => (
                 <div key={i} className="flex justify-between items-center text-[11px]">
                   <span className="text-slate-700 font-medium">{m.payment_method}</span>
-                  <span className="font-mono font-bold text-slate-900">{m.total} BDT ({m.tx_count})</span>
+                  <span className="font-mono font-bold text-slate-900">{formatCurrency(m.total)} ({m.tx_count})</span>
                 </div>
               ))
             )}
@@ -273,7 +283,9 @@ export default function CollectionHistory() {
         {/* Mobile View */}
         <div className="block sm:hidden divide-y divide-slate-100">
           {payments.length === 0 ? (
-            <div className="p-8 text-center text-xs text-slate-400">No collections found.</div>
+            <div className="p-8 text-center text-xs text-slate-400">
+              {isBn ? 'কোনো লেনদেন তথ্য পাওয়া যায়নি।' : 'No collections found.'}
+            </div>
           ) : (
             payments.map((p) => (
               <div key={p.id} className="p-4 space-y-2">
@@ -286,7 +298,7 @@ export default function CollectionHistory() {
 
                   <div className="text-right">
                     <span className="text-base font-black font-mono text-emerald-600 block">
-                      +{p.paid_amount} BDT
+                      +{formatCurrency(p.paid_amount)}
                     </span>
                     <span className="text-[10px] text-slate-500">
                       {p.payment_method}
@@ -295,13 +307,13 @@ export default function CollectionHistory() {
                 </div>
 
                 <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-50">
-                  <span>{p.payment_date} {p.payment_time} • {p.collector_name || 'Office'}</span>
+                  <span>{p.payment_date} {p.payment_time} • {p.collector_name || (isBn ? 'অফিস' : 'Office')}</span>
                   <button
                     type="button"
                     onClick={() => handleOpenReceipt(p.receipt_number)}
-                    className="px-2.5 py-1 bg-blue-50 text-blue-700 rounded-md font-bold text-xs"
+                    className="px-2.5 py-1 bg-blue-50 text-blue-700 rounded-md font-bold text-xs cursor-pointer"
                   >
-                    View Receipt
+                    {isBn ? 'রশিদ দেখুন' : 'View Receipt'}
                   </button>
                 </div>
               </div>
@@ -314,23 +326,23 @@ export default function CollectionHistory() {
           <table className="w-full text-left text-xs text-slate-600">
             <thead className="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200">
               <tr>
-                <th className="p-3.5">Date & Time</th>
-                <th className="p-3.5">Receipt No</th>
-                <th className="p-3.5">Customer</th>
-                <th className="p-3.5">Area</th>
-                <th className="p-3.5">Collector</th>
-                <th className="p-3.5">Method</th>
-                <th className="p-3.5">Prev Due</th>
-                <th className="p-3.5 font-bold text-emerald-700">Paid Amount</th>
-                <th className="p-3.5">Remaining</th>
-                <th className="p-3.5 text-right">Receipt</th>
+                <th className="p-3.5">{isBn ? 'তারিখ ও সময়' : 'Date & Time'}</th>
+                <th className="p-3.5">{isBn ? 'রশিদ নম্বর' : 'Receipt No'}</th>
+                <th className="p-3.5">{isBn ? 'গ্রাহক' : 'Customer'}</th>
+                <th className="p-3.5">{isBn ? 'এলাকা' : 'Area'}</th>
+                <th className="p-3.5">{isBn ? 'কালেক্টর' : 'Collector'}</th>
+                <th className="p-3.5">{isBn ? 'মাধ্যম' : 'Method'}</th>
+                <th className="p-3.5">{isBn ? 'পূর্ব বকেয়া' : 'Prev Due'}</th>
+                <th className="p-3.5 font-bold text-emerald-700">{isBn ? 'পরিশোধিত টাকা' : 'Paid Amount'}</th>
+                <th className="p-3.5">{isBn ? 'অবশিষ্ট বকেয়া' : 'Remaining'}</th>
+                <th className="p-3.5 text-right">{isBn ? 'রশিদ' : 'Receipt'}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {payments.length === 0 ? (
                 <tr>
                   <td colSpan="10" className="p-8 text-center text-slate-400">
-                    No transactions found for the selected filter.
+                    {isBn ? 'নির্বাচিত ফিল্টারের জন্য কোনো লেনদেন পাওয়া যায়নি।' : 'No transactions found for the selected filter.'}
                   </td>
                 </tr>
               ) : (
@@ -340,26 +352,31 @@ export default function CollectionHistory() {
                       <div>{p.payment_date}</div>
                       <div className="text-[10px] text-slate-400">{p.payment_time}</div>
                     </td>
-                    <td className="p-3.5 font-mono font-semibold text-blue-600">
-                      {p.receipt_number}
+                    <td className="p-3.5">
+                      <div className="font-mono font-semibold text-blue-600">{p.receipt_number}</div>
+                      {p.billing_month && (
+                        <div className="text-[10px] text-slate-500 font-sans mt-0.5 font-medium">
+                          {formatBillingMonth(p.billing_month, isBn ? 'bengali' : 'english')}
+                        </div>
+                      )}
                     </td>
                     <td className="p-3.5">
                       <div className="font-bold text-slate-900">{p.customer_name}</div>
                       <div className="text-[10px] font-mono text-slate-500">{p.customer_code}</div>
                     </td>
                     <td className="p-3.5">{p.area_name || '-'}</td>
-                    <td className="p-3.5 font-medium text-slate-800">{p.collector_name || 'Office'}</td>
+                    <td className="p-3.5 font-medium text-slate-800">{p.collector_name || (isBn ? 'অফিস' : 'Office')}</td>
                     <td className="p-3.5 font-medium text-slate-700">{p.payment_method}</td>
-                    <td className="p-3.5 font-mono text-slate-500">{p.previous_due} BDT</td>
-                    <td className="p-3.5 font-mono font-black text-emerald-600">{p.paid_amount} BDT</td>
-                    <td className="p-3.5 font-mono font-bold text-slate-800">{p.remaining_due} BDT</td>
+                    <td className="p-3.5 font-mono text-slate-500">{formatCurrency(p.previous_due)}</td>
+                    <td className="p-3.5 font-mono font-black text-emerald-600">+{formatCurrency(p.paid_amount)}</td>
+                    <td className="p-3.5 font-mono font-bold text-slate-800">{formatCurrency(p.remaining_due)}</td>
                     <td className="p-3.5 text-right">
                       <button
                         type="button"
                         onClick={() => handleOpenReceipt(p.receipt_number)}
-                        className="px-2 py-1 bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-600 rounded font-semibold text-xs transition-colors"
+                        className="px-2 py-1 bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-600 rounded font-semibold text-xs transition-colors cursor-pointer"
                       >
-                        Receipt
+                        {isBn ? 'রশিদ' : 'Receipt'}
                       </button>
                     </td>
                   </tr>

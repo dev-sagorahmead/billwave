@@ -27,6 +27,7 @@ function initSchema() {
       status TEXT DEFAULT 'Active', -- 'Active' | 'Inactive'
       registration_date TEXT NOT NULL,
       customer_prefix TEXT DEFAULT 'FCN',
+      language TEXT DEFAULT 'bn', -- 'bn' | 'en'
       notes TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
@@ -123,6 +124,7 @@ function initSchema() {
       payment_date TEXT NOT NULL, -- 'YYYY-MM-DD'
       payment_time TEXT NOT NULL, -- 'HH:mm:ss'
       payment_method TEXT NOT NULL DEFAULT 'Cash', -- 'Cash' | 'bKash' | 'Nagad' | 'Bank' | 'Other'
+      billing_month TEXT, -- e.g. '2026-08' (1 month in arrears)
       notes TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
@@ -132,6 +134,34 @@ function initSchema() {
       value TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS notices (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sender_role TEXT NOT NULL, -- 'super_admin' | 'company_admin'
+      sender_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+      target_type TEXT NOT NULL, -- 'company' | 'all_companies' | 'collector' | 'all_collectors'
+      target_company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+      target_user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      title TEXT,
+      message TEXT NOT NULL,
+      priority TEXT DEFAULT 'normal', -- 'normal' | 'urgent' | 'warning'
+      status TEXT DEFAULT 'Active', -- 'Active' | 'Inactive'
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      expires_at DATETIME
+    );
+
+    CREATE TABLE IF NOT EXISTS auto_billing_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      billing_month TEXT NOT NULL,
+      total_companies INTEGER DEFAULT 0,
+      total_bills_generated INTEGER DEFAULT 0,
+      total_amount REAL DEFAULT 0,
+      triggered_by TEXT DEFAULT 'scheduler', -- 'scheduler' | 'manual' | 'startup'
+      executed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      status TEXT DEFAULT 'Success',
+      details TEXT
+    );
+
     -- Indices for high performance queries
     CREATE INDEX IF NOT EXISTS idx_customers_company_area ON customers(company_id, area_id);
     CREATE INDEX IF NOT EXISTS idx_customers_company_status ON customers(company_id, status);
@@ -139,9 +169,55 @@ function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_payments_company_date ON payments(company_id, payment_date);
     CREATE INDEX IF NOT EXISTS idx_payments_collector ON payments(collector_id);
     CREATE INDEX IF NOT EXISTS idx_bills_customer_month ON bills(customer_id, billing_month);
+    CREATE INDEX IF NOT EXISTS idx_notices_target_company ON notices(target_company_id, status);
+    CREATE INDEX IF NOT EXISTS idx_notices_target_user ON notices(target_user_id, status);
+    CREATE INDEX IF NOT EXISTS idx_auto_billing_month ON auto_billing_logs(billing_month);
   `);
 }
 
 initSchema();
+
+try {
+  db.prepare('ALTER TABLE payments ADD COLUMN billing_month TEXT').run();
+} catch (e) {
+  // column already exists
+}
+
+try {
+  db.prepare("ALTER TABLE companies ADD COLUMN language TEXT DEFAULT 'bn'").run();
+} catch (e) {
+  // column already exists
+}
+
+// Initialize default platform settings (BillWave login page branding)
+const defaultPlatformSettings = [
+  ['login_logo', '/uploads/billwave-logo.png'],
+  ['login_logo_bg', 'white'],
+  ['login_logo_height', '56'],
+  ['login_brand_title', 'BillWave'],
+  ['login_brand_subtitle', 'Manage. Collect. Grow.'],
+  ['login_card_title_bn', 'অ্যাকাউন্টে প্রবেশ করুন'],
+  ['login_card_title_en', 'Sign in to your account'],
+  ['login_card_subtitle_bn', 'আপনার ইউজারনেম, ইমেইল, মোবাইল বা গ্রাহক আইডি লিখুন'],
+  ['login_card_subtitle_en', 'Enter your Username, Email, Phone, or Customer ID'],
+  ['login_footer_text', '© 2026 BillWave. All rights reserved.'],
+  ['login_bg_theme', 'light']
+];
+
+for (const [k, v] of defaultPlatformSettings) {
+  try {
+    const existing = db.prepare('SELECT value FROM platform_settings WHERE key = ?').get(k);
+    if (!existing) {
+      db.prepare('INSERT INTO platform_settings (key, value) VALUES (?, ?)').run(k, v);
+    }
+  } catch (e) {}
+}
+
+// Ensure BillWave logo is active
+try {
+  db.prepare("INSERT INTO platform_settings (key, value) VALUES ('login_logo', '/uploads/billwave-logo.png') ON CONFLICT(key) DO UPDATE SET value = '/uploads/billwave-logo.png'").run();
+  db.prepare("INSERT INTO platform_settings (key, value) VALUES ('login_brand_title', 'BillWave') ON CONFLICT(key) DO UPDATE SET value = 'BillWave'").run();
+  db.prepare("INSERT INTO platform_settings (key, value) VALUES ('login_brand_subtitle', 'Manage. Collect. Grow.') ON CONFLICT(key) DO UPDATE SET value = 'Manage. Collect. Grow.'").run();
+} catch (e) {}
 
 module.exports = db;

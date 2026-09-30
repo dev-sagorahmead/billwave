@@ -3,7 +3,7 @@ const db = require('../db/database');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dish_billing_super_secret_jwt_key_2026';
 
-function generateToken(user) {
+function generateToken(user, extra = {}) {
   return jwt.sign(
     {
       id: user.id,
@@ -11,7 +11,8 @@ function generateToken(user) {
       name: user.name,
       email: user.email,
       role: user.role,
-      customer_id_ref: user.customer_id_ref
+      customer_id_ref: user.customer_id_ref,
+      ...extra
     },
     JWT_SECRET,
     { expiresIn: '30d' }
@@ -30,16 +31,22 @@ function authenticateToken(req, res, next) {
     const decoded = jwt.verify(token, JWT_SECRET);
     
     // Fetch latest user data from DB to ensure status is still active
-    const user = db.prepare('SELECT id, company_id, name, email, phone, role, status, customer_id_ref FROM users WHERE id = ?').get(decoded.id);
+    const user = db.prepare('SELECT id, company_id, name, email, phone, avatar, role, status, customer_id_ref FROM users WHERE id = ?').get(decoded.id);
     if (!user || user.status !== 'Active') {
-      return res.status(403).json({ error: 'User account is inactive or not found' });
+      const msg = user && user.role === 'company_admin'
+        ? 'আপনার অ্যাকাউন্ট বর্তমানে Deactive আছে। ডেভেলপার এর সাথে যোগাযোগ করুন।'
+        : 'আপনার কালেক্টর অ্যাকাউন্টটি বর্তমানে নিষ্ক্রিয় (Inactive/Deactive) আছে। এডমিনের সাথে যোগাযোগ করুন।';
+      return res.status(403).json({ error: msg });
     }
 
     // If company user, verify company is active
     if (user.company_id) {
-      const company = db.prepare('SELECT id, name, status, customer_prefix, logo, phone, email, address FROM companies WHERE id = ?').get(user.company_id);
-      if (!company || company.status !== 'Active') {
-        return res.status(403).json({ error: 'Company account is inactive or suspended' });
+      const company = db.prepare('SELECT id, name, status, customer_prefix, logo, phone, email, address, language FROM companies WHERE id = ?').get(user.company_id);
+      if (!company || (company.status !== 'Active' && !decoded.isImpersonated)) {
+        const msg = user.role === 'company_admin'
+          ? `আপনার কোম্পানি (${company?.name || ''}) বর্তমানে Super Admin কর্তৃক Deactive আছে। ডেভেলপার এর সাথে যোগাযোগ করুন।`
+          : `আপনার কোম্পানি (${company?.name || ''}) বর্তমানে Deactive আছে। কোম্পানির এডমিনের সাথে যোগাযোগ করুন।`;
+        return res.status(403).json({ error: msg });
       }
       req.company = company;
     }

@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../utils/api';
+import { useLanguage } from '../../context/LanguageContext';
 import { 
   Package, PlusCircle, Edit, Trash2, CheckCircle2, 
   XCircle, Users, X, Loader2, DollarSign 
 } from 'lucide-react';
 
 export default function PackageList() {
+  const { isBn, formatStatus, formatCurrency } = useLanguage();
   const [packages, setPackages] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -68,7 +70,10 @@ export default function PackageList() {
   };
 
   const handleDelete = async (pkg) => {
-    if (!confirm(`Are you sure you want to delete package "${pkg.name}"?`)) return;
+    const confirmMsg = isBn 
+      ? `আপনি কি নিশ্চিত যে "${pkg.name}" প্যাকেজটি মুছে ফেলতে চান?` 
+      : `Are you sure you want to delete package "${pkg.name}"?`;
+    if (!confirm(confirmMsg)) return;
     try {
       await api.deletePackage(pkg.id);
       fetchPackages();
@@ -85,79 +90,89 @@ export default function PackageList() {
         <div>
           <h1 className="text-lg sm:text-xl font-black text-slate-900 flex items-center gap-2">
             <Package className="w-5 h-5 text-indigo-600" />
-            <span>Cable TV Package & Tariff Management</span>
+            <span>{isBn ? 'ক্যাবল টিভি প্যাকেজ ও ট্যারিফ ব্যবস্থাপনা' : 'Cable TV Package & Tariff Management'}</span>
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Configure subscription packages, channel tiers, and monthly rates
+            {isBn 
+              ? 'সাবস্ক্রিপশন প্যাকেজ, মাসিক রেট ও বিবরণ পরিচালনা করুন' 
+              : 'Configure subscription packages, channel tiers, and monthly rates'}
           </p>
         </div>
 
         <button
           type="button"
           onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/20 transition-all"
+          className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/20 transition-all cursor-pointer"
         >
           <PlusCircle className="w-4 h-4" />
-          <span>Create New Package</span>
+          <span>{isBn ? 'নতুন প্যাকেজ তৈরি' : 'Create New Package'}</span>
         </button>
       </div>
 
       {/* Package Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {packages.map((pkg) => (
-          <div key={pkg.id} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4 hover:border-indigo-300 transition-all flex flex-col justify-between">
-            
-            <div className="space-y-3">
-              <div className="flex justify-between items-start">
-                <h2 className="font-bold text-base text-slate-900">{pkg.name}</h2>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                  pkg.status === 'Active' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'
-                }`}>
-                  {pkg.status}
-                </span>
-              </div>
-
-              <div>
-                <span className="text-2xl font-black font-mono text-indigo-600">
-                  {pkg.price} BDT
-                </span>
-                <span className="text-xs text-slate-500"> / month</span>
-              </div>
-
-              <p className="text-xs text-slate-600 line-clamp-2 min-h-[32px]">
-                {pkg.description || 'Standard digital cable connection'}
-              </p>
-
-              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-xs flex justify-between items-center text-slate-600">
-                <span className="flex items-center gap-1.5">
-                  <Users className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Subscribers</span>
-                </span>
-                <span className="font-bold text-slate-900">{pkg.subscriber_count} ({pkg.active_subscriber_count} Active)</span>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-1 pt-3 border-t border-slate-100 text-xs">
-              <button
-                type="button"
-                onClick={() => setEditingPkg(pkg)}
-                className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg"
-                title="Edit Package"
-              >
-                <Edit className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDelete(pkg)}
-                className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg"
-                title="Delete Package"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
-
+        {packages.length === 0 ? (
+          <div className="col-span-full bg-white rounded-2xl border border-slate-200 p-12 text-center text-slate-400">
+            {isBn ? 'কোনো প্যাকেজ নেই। নতুন প্যাকেজ যোগ করতে উপরের বোতাম চাপুন!' : 'No packages found. Click "Create New Package" above!'}
           </div>
-        ))}
+        ) : (
+          packages.map((pkg) => (
+            <div key={pkg.id} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4 hover:border-indigo-300 transition-all flex flex-col justify-between">
+              
+              <div className="space-y-3">
+                <div className="flex justify-between items-start">
+                  <h2 className="font-bold text-base text-slate-900">{pkg.name}</h2>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                    pkg.status === 'Active' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'
+                  }`}>
+                    {formatStatus(pkg.status)}
+                  </span>
+                </div>
+
+                <div>
+                  <span className="text-2xl font-black font-mono text-indigo-600">
+                    {formatCurrency(pkg.price || 0)}
+                  </span>
+                  <span className="text-xs text-slate-500"> / {isBn ? 'মাস' : 'month'}</span>
+                </div>
+
+                <p className="text-xs text-slate-600 line-clamp-2 min-h-[32px]">
+                  {pkg.description || (isBn ? 'সাধারণ ডিজিটাল ক্যাবল কানেকশন' : 'Standard digital cable connection')}
+                </p>
+
+                <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-xs flex justify-between items-center text-slate-600">
+                  <span className="flex items-center gap-1.5">
+                    <Users className="w-3.5 h-3.5 text-slate-400" />
+                    <span>{isBn ? 'গ্রাহক সংখ্যা' : 'Subscribers'}</span>
+                  </span>
+                  <span className="font-bold text-slate-900">
+                    {pkg.subscriber_count} ({pkg.active_subscriber_count} {isBn ? 'সক্রিয়' : 'Active'})
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-1 pt-3 border-t border-slate-100 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setEditingPkg(pkg)}
+                  className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg cursor-pointer"
+                  title={isBn ? 'প্যাকেজ সম্পাদনা' : 'Edit Package'}
+                >
+                  <Edit className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDelete(pkg)}
+                  className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer"
+                  title={isBn ? 'প্যাকেজ মুছুন' : 'Delete Package'}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+
+            </div>
+          ))
+        )}
       </div>
 
       {/* Modal: Create Package */}
@@ -165,7 +180,7 @@ export default function PackageList() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4">
             <div className="flex justify-between items-center pb-3 border-b border-slate-200">
-              <h3 className="font-bold text-base text-slate-900">Create New Package</h3>
+              <h3 className="font-bold text-base text-slate-900">{isBn ? 'নতুন প্যাকেজ তৈরি' : 'Create New Package'}</h3>
               <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
               </button>
@@ -173,19 +188,19 @@ export default function PackageList() {
 
             <form onSubmit={handleCreatePackage} className="space-y-4 text-xs">
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Package Name *</label>
+                <label className="block font-semibold text-slate-700 mb-1">{isBn ? 'প্যাকেজের নাম *' : 'Package Name *'}</label>
                 <input
                   type="text"
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Regular, Premium, Basic, Free"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                  placeholder={isBn ? 'যেমন: রেগুলার, প্রিমিয়াম, বেসিক, ফ্রি' : 'e.g. Regular, Premium, Basic, Free'}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Monthly Price (BDT) *</label>
+                <label className="block font-semibold text-slate-700 mb-1">{isBn ? 'মাসিক মূল্য (টাকা) *' : 'Monthly Price (BDT) *'}</label>
                 <input
                   type="number"
                   required
@@ -193,19 +208,19 @@ export default function PackageList() {
                   step="any"
                   value={price}
                   onChange={(e) => setPrice(e.target.value)}
-                  placeholder="e.g. 150 (0 for Free)"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono font-bold"
+                  placeholder="150"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono font-bold focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Description</label>
+                <label className="block font-semibold text-slate-700 mb-1">{isBn ? 'বিবরণ' : 'Description'}</label>
                 <input
                   type="text"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="e.g. 80+ Channels with HD Sports"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                  placeholder={isBn ? 'যেমন: ৮০+ চ্যানেল ও স্পোর্টস' : 'e.g. 80+ Channels with HD Sports'}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                 />
               </div>
 
@@ -213,16 +228,16 @@ export default function PackageList() {
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 font-semibold text-slate-600"
+                  className="px-4 py-2 font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
                 >
-                  Cancel
+                  {isBn ? 'বাতিল' : 'Cancel'}
                 </button>
                 <button
                   type="submit"
                   disabled={actionLoading}
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold"
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-md shadow-indigo-600/20"
                 >
-                  Create Package
+                  {actionLoading ? (isBn ? 'তৈরি হচ্ছে...' : 'Creating...') : (isBn ? 'প্যাকেজ তৈরি করুন' : 'Create Package')}
                 </button>
               </div>
             </form>
@@ -235,7 +250,7 @@ export default function PackageList() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4">
             <div className="flex justify-between items-center pb-3 border-b border-slate-200">
-              <h3 className="font-bold text-base text-slate-900">Edit Package</h3>
+              <h3 className="font-bold text-base text-slate-900">{isBn ? 'প্যাকেজ সম্পাদনা' : 'Edit Package'}</h3>
               <button onClick={() => setEditingPkg(null)} className="text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
               </button>
@@ -243,18 +258,18 @@ export default function PackageList() {
 
             <form onSubmit={handleEditPackage} className="space-y-4 text-xs">
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Package Name</label>
+                <label className="block font-semibold text-slate-700 mb-1">{isBn ? 'প্যাকেজের নাম *' : 'Package Name *'}</label>
                 <input
                   type="text"
                   required
                   value={editingPkg.name}
                   onChange={(e) => setEditingPkg({ ...editingPkg, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Monthly Price (BDT)</label>
+                <label className="block font-semibold text-slate-700 mb-1">{isBn ? 'মাসিক মূল্য (টাকা) *' : 'Monthly Price (BDT) *'}</label>
                 <input
                   type="number"
                   required
@@ -262,17 +277,17 @@ export default function PackageList() {
                   step="any"
                   value={editingPkg.price}
                   onChange={(e) => setEditingPkg({ ...editingPkg, price: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono font-bold"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono font-bold focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Description</label>
+                <label className="block font-semibold text-slate-700 mb-1">{isBn ? 'বিবরণ' : 'Description'}</label>
                 <input
                   type="text"
                   value={editingPkg.description || ''}
                   onChange={(e) => setEditingPkg({ ...editingPkg, description: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                 />
               </div>
 
@@ -280,16 +295,16 @@ export default function PackageList() {
                 <button
                   type="button"
                   onClick={() => setEditingPkg(null)}
-                  className="px-4 py-2 font-semibold text-slate-600"
+                  className="px-4 py-2 font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
                 >
-                  Cancel
+                  {isBn ? 'বাতিল' : 'Cancel'}
                 </button>
                 <button
                   type="submit"
                   disabled={actionLoading}
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold"
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-md shadow-indigo-600/20"
                 >
-                  Save Changes
+                  {actionLoading ? (isBn ? 'সংরক্ষণ হচ্ছে...' : 'Saving...') : (isBn ? 'পরিবর্তন সংরক্ষণ করুন' : 'Save Changes')}
                 </button>
               </div>
             </form>

@@ -38,12 +38,20 @@ body {
 }
 
 /* Thermal printer print formatting */
+@page {
+  size: 58mm auto;
+  margin: 0;
+}
+
 @media print {
-  body {
+  html, body {
+    width: 58mm !important;
     background: #ffffff !important;
     color: #000000 !important;
     margin: 0 !important;
     padding: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
   /* Hide everything except printable receipt */
@@ -81,4 +89,25 @@ body {
     font-family: monospace, Courier, sans-serif !important;
     color: black !important;
   }
+}
+
+/* Horizontal scrolling marquee animation */
+@keyframes marquee-scroll {
+  0% {
+    transform: translateX(100%);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
+.animate-marquee {
+  display: inline-block;
+  white-space: nowrap;
+  animation: marquee-scroll 25s linear infinite;
+  will-change: transform;
+}
+
+.animate-marquee:hover {
+  animation-play-state: paused;
 }

@@ -11,6 +11,10 @@ try {
   console.log('Seed info:', e.message);
 }
 
+// Start automatic 1st-of-the-month billing scheduler
+const { startAutoBillingScheduler } = require('./services/autoBilling');
+startAutoBillingScheduler();
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -38,6 +42,7 @@ app.use('/api/customers', require('./routes/customers'));
 app.use('/api/billing', require('./routes/billing'));
 app.use('/api/payments', require('./routes/payments'));
 app.use('/api/reports', require('./routes/reports'));
+app.use('/api/notices', require('./routes/notices'));
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -66,9 +71,11 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error: ' + (err.message || err) });
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`=======================================================`);
-  console.log(`Dish Cable SaaS Server listening on http://localhost:${PORT}`);
-  console.log(`Health check: http://localhost:${PORT}/api/health`);
+  console.log(`Dish Cable SaaS Server listening on:`);
+  console.log(`- Local:   http://localhost:${PORT}`);
+  console.log(`- Network: http://192.168.1.4:${PORT}`);
+  console.log(`Health check: http://192.168.1.4:${PORT}/api/health`);
   console.log(`=======================================================`);
 });

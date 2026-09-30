@@ -9,7 +9,8 @@
     "test": "node server/test_suite.js",
     "dev:server": "node server/src/index.js",
     "dev:client": "npm run dev --prefix client",
-    "seed": "node server/src/db/seed.js"
+    "seed": "node server/src/db/seed.js",
+    "clear-dummy": "node server/src/db/clearDummy.js"
   },
   "keywords": [],
   "author": "",

@@ -55,7 +55,10 @@ export async function apiRequest(endpoint, options = {}) {
 
   if (!response.ok) {
     const errorMsg = data && data.error ? data.error : `HTTP ${response.status}: ${response.statusText}`;
-    throw new Error(errorMsg);
+    const err = new Error(errorMsg);
+    err.status = response.status;
+    err.data = data;
+    throw err;
   }
 
   return data;
@@ -66,6 +69,7 @@ export const api = {
   login: (credentials) => apiRequest('/auth/login', { method: 'POST', body: JSON.stringify(credentials) }),
   getMe: () => apiRequest('/auth/me'),
   demoSwitch: (role, email) => apiRequest('/auth/demo-switch', { method: 'POST', body: JSON.stringify({ role, email }) }),
+  getLoginSettings: () => apiRequest('/auth/login-settings'),
 
   // Super Admin
   getSuperAdminStats: () => apiRequest('/superadmin/dashboard-stats'),
@@ -76,11 +80,49 @@ export const api = {
   changeCompanyStatus: (id, status) => apiRequest(`/superadmin/companies/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
   resetCompanyPassword: (id, new_password) => apiRequest(`/superadmin/companies/${id}/reset-password`, { method: 'POST', body: JSON.stringify({ new_password }) }),
   deleteCompany: (id) => apiRequest(`/superadmin/companies/${id}`, { method: 'DELETE' }),
+  autoLoginCompany: (id) => apiRequest(`/superadmin/companies/${id}/auto-login`, { method: 'POST' }),
+  clearDummyData: () => apiRequest('/superadmin/clear-dummy-data', { method: 'POST' }),
+  getSuperAdminSettings: () => apiRequest('/superadmin/settings'),
+  updateSuperAdminSettings: (data) => apiRequest('/superadmin/settings', { method: 'POST', body: JSON.stringify(data) }),
+  uploadLoginLogo: async (formData) => {
+    const token = getToken();
+    const headers = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    const res = await fetch('/api/superadmin/upload-login-logo', {
+      method: 'POST',
+      headers,
+      body: formData
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Failed to upload login logo');
+    }
+    return data;
+  },
 
   // Company Admin Dashboard & Settings
   getCompanyDashboard: () => apiRequest('/company/dashboard'),
   getCompanySettings: () => apiRequest('/company/settings'),
   updateCompanySettings: (data) => apiRequest('/company/settings', { method: 'PUT', body: JSON.stringify(data) }),
+  uploadCompanyLogo: async (formData) => {
+    const token = getToken();
+    const headers = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    const res = await fetch('/api/company/upload-logo', {
+      method: 'POST',
+      headers,
+      body: formData
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Failed to upload logo');
+    }
+    return data;
+  },
 
   // Areas
   getAreas: () => apiRequest('/areas'),
@@ -94,6 +136,23 @@ export const api = {
   getCollector: (id) => apiRequest(`/collectors/${id}`),
   createCollector: (data) => apiRequest('/collectors', { method: 'POST', body: JSON.stringify(data) }),
   updateCollector: (id, data) => apiRequest(`/collectors/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  uploadCollectorAvatar: async (formData) => {
+    const token = getToken();
+    const headers = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    const res = await fetch('/api/collectors/upload-avatar', {
+      method: 'POST',
+      headers,
+      body: formData
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Failed to upload avatar');
+    }
+    return data;
+  },
   resetCollectorPassword: (id, new_password) => apiRequest(`/collectors/${id}/reset-password`, { method: 'POST', body: JSON.stringify({ new_password }) }),
   changeCollectorStatus: (id, status) => apiRequest(`/collectors/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
   deleteCollector: (id) => apiRequest(`/collectors/${id}`, { method: 'DELETE' }),
@@ -108,18 +167,26 @@ export const api = {
   // Customers
   getCustomers: (query = '') => apiRequest(`/customers?${query}`),
   getCustomer: (id) => apiRequest(`/customers/${id}`),
+  getCustomerPayments: (id) => apiRequest(`/customers/${id}/payments`),
   createCustomer: (data) => apiRequest('/customers', { method: 'POST', body: JSON.stringify(data) }),
   updateCustomer: (id, data) => apiRequest(`/customers/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   changeCustomerStatus: (id, status, notes = '') => apiRequest(`/customers/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status, notes }) }),
   changeCustomerPackage: (id, package_id, monthly_bill) => apiRequest(`/customers/${id}/package`, { method: 'PATCH', body: JSON.stringify({ package_id, monthly_bill }) }),
   deleteCustomer: (id) => apiRequest(`/customers/${id}`, { method: 'DELETE' }),
-  previewImportCustomers: (rows) => apiRequest('/customers/import/preview', { method: 'POST', body: JSON.stringify({ rows }) }),
+  bulkChangeCustomerStatus: (customer_ids, status, notes = '') =>
+    apiRequest('/customers/bulk-status', { method: 'POST', body: JSON.stringify({ customer_ids, status, notes }) }),
+  bulkDeleteCustomers: (customer_ids) =>
+    apiRequest('/customers/bulk-delete', { method: 'POST', body: JSON.stringify({ customer_ids }) }),
+  previewImportCustomers: (rows, default_status = 'Active', default_area_id = null) => 
+    apiRequest('/customers/import/preview', { method: 'POST', body: JSON.stringify({ rows, default_status, default_area_id }) }),
   confirmImportCustomers: (rows) => apiRequest('/customers/import/confirm', { method: 'POST', body: JSON.stringify({ rows }) }),
 
   // Billing
   getBillingPreview: (month) => apiRequest(`/billing/preview?month=${month || ''}`),
   generateBills: (month) => apiRequest('/billing/generate', { method: 'POST', body: JSON.stringify({ month }) }),
   getBillingHistory: (query = '') => apiRequest(`/billing/history?${query}`),
+  getAutoBillingStatus: () => apiRequest('/billing/auto-status'),
+  triggerAutoBilling: (month) => apiRequest('/billing/trigger-auto', { method: 'POST', body: JSON.stringify({ month }) }),
 
   // Payments & Receipts
   collectPayment: (data) => apiRequest('/payments/collect', { method: 'POST', body: JSON.stringify(data) }),
@@ -127,5 +194,17 @@ export const api = {
   getPayments: (query = '') => apiRequest(`/payments?${query}`),
 
   // Reports
-  getReport: (query = '') => apiRequest(`/reports/run?${query}`)
+  getReport: (query = '') => apiRequest(`/reports/run?${query}`),
+
+  // Notices & Marquee Announcements
+  getActiveNotices: () => apiRequest('/notices/active'),
+  getSuperAdminNotices: () => apiRequest('/notices/superadmin'),
+  createSuperAdminNotice: (data) => apiRequest('/notices/superadmin', { method: 'POST', body: JSON.stringify(data) }),
+  toggleSuperAdminNoticeStatus: (id, status) => apiRequest(`/notices/superadmin/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+  deleteSuperAdminNotice: (id) => apiRequest(`/notices/superadmin/${id}`, { method: 'DELETE' }),
+
+  getCompanyNotices: (company_id) => apiRequest(`/notices/company${company_id ? `?company_id=${company_id}` : ''}`),
+  createCompanyNotice: (data) => apiRequest('/notices/company', { method: 'POST', body: JSON.stringify(data) }),
+  toggleCompanyNoticeStatus: (id, status) => apiRequest(`/notices/company/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+  deleteCompanyNotice: (id) => apiRequest(`/notices/company/${id}`, { method: 'DELETE' })
 };

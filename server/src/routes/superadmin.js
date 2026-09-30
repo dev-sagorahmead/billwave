@@ -1,14 +1,46 @@
 const express = require('express');
 const router = express.Router();
+const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
 const bcrypt = require('bcryptjs');
 const db = require('../db/database');
 const { authenticateToken, requireRoles } = require('../middleware/auth');
 
+// Configure logo uploads in server/uploads
+const uploadsDir = path.join(__dirname, '..', '..', 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, uploadsDir);
+  },
+  filename: function (req, file, cb) {
+    const ext = path.extname(file.originalname).toLowerCase() || '.png';
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, 'login-logo-' + uniqueSuffix + ext);
+  }
+});
+
+const upload = multer({
+  storage: storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB max
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files (PNG, JPG, JPEG, WEBP, SVG) are allowed'), false);
+    }
+  }
+});
+
 // All superadmin routes require super_admin role
 router.use(authenticateToken, requireRoles('super_admin'));
 
-// GET /api/superadmin/dashboard-stats
-router.get('/dashboard-stats', (req, res) => {
+// GET /api/superadmin/dashboard-stats (also aliased to /stats)
+router.get(['/dashboard-stats', '/stats'], (req, res) => {
   const todayStr = new Date().toISOString().split('T')[0];
   const thisMonthStr = todayStr.substring(0, 7); // 'YYYY-MM'
 
@@ -235,13 +267,14 @@ router.put('/companies/:id', (req, res) => {
 
 // PATCH /api/superadmin/companies/:id/status
 router.patch('/companies/:id/status', (req, res) => {
-  const { status } = req.body; // 'Active' or 'Inactive'
-  if (!['Active', 'Inactive'].includes(status)) {
-    return res.status(400).json({ error: 'Invalid status' });
+  let { status } = req.body;
+  if (status === 'Inactive') status = 'Deactive';
+  if (!['Active', 'Deactive'].includes(status)) {
+    return res.status(400).json({ error: 'Invalid status. Must be Active or Deactive' });
   }
 
   db.prepare('UPDATE companies SET status = ? WHERE id = ?').run(status, req.params.id);
-  res.json({ message: `Company status changed to ${status}` });
+  res.json({ message: `Company status changed to ${status}`, status });
 });
 
 // POST /api/superadmin/companies/:id/reset-password
@@ -300,8 +333,95 @@ router.post('/settings', (req, res) => {
     }
   });
 
-  updateTx();
-  res.json({ message: 'Platform settings updated successfully' });
+  try {
+    updateTx();
+    res.json({ message: 'Settings saved successfully' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update settings: ' + err.message });
+  }
+});
+
+// POST /api/superadmin/upload-login-logo
+router.post('/upload-login-logo', upload.single('logo'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No logo image file was uploaded' });
+  }
+
+  const logoUrl = `/uploads/${req.file.filename}`;
+  db.prepare(`
+    INSERT INTO platform_settings (key, value)
+    VALUES ('login_logo', ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+  `).run(logoUrl);
+
+  res.json({
+    message: 'Login logo uploaded successfully',
+    logoUrl
+  });
+});
+
+// POST /api/superadmin/companies/:id/auto-login (Impersonate & login directly to company)
+router.post('/companies/:id/auto-login', (req, res) => {
+  const companyId = req.params.id;
+  const company = db.prepare('SELECT * FROM companies WHERE id = ?').get(companyId);
+  if (!company) {
+    return res.status(404).json({ error: 'Company not found' });
+  }
+
+  // Find company admin
+  let admin = db.prepare(`
+    SELECT * FROM users WHERE company_id = ? AND role = 'company_admin' LIMIT 1
+  `).get(companyId);
+
+  if (!admin) {
+    return res.status(404).json({ error: 'Company admin account not found for this company' });
+  }
+
+  const { generateToken } = require('../middleware/auth');
+  const token = generateToken(admin, { isImpersonated: true, impersonatedBy: req.user.email });
+
+  res.json({
+    message: `Successfully logged into ${company.name} as Admin`,
+    token,
+    user: {
+      id: admin.id,
+      company_id: admin.company_id,
+      company_name: company.name,
+      customer_prefix: company.customer_prefix,
+      name: admin.name,
+      email: admin.email,
+      phone: admin.phone,
+      role: admin.role,
+      isImpersonated: true,
+      impersonatedBy: req.user.email
+    },
+    company
+  });
+});
+
+// POST /api/superadmin/clear-dummy-data (Clear all dummy data, keeping Super Admin safe)
+router.post('/clear-dummy-data', (req, res) => {
+  const clearTx = db.transaction(() => {
+    db.prepare('DELETE FROM payments').run();
+    db.prepare('DELETE FROM bills').run();
+    db.prepare('DELETE FROM customers').run();
+    db.prepare('DELETE FROM collector_areas').run();
+    db.prepare('DELETE FROM areas').run();
+    db.prepare('DELETE FROM packages').run();
+    db.prepare("DELETE FROM users WHERE role != 'super_admin'").run();
+    db.prepare('DELETE FROM companies').run();
+  });
+
+  try {
+    clearTx();
+    res.json({
+      message: 'All dummy companies, customers, collectors, bills, and payments cleared successfully. Database is now clean and ready for real data!',
+      superAdminPreserved: true
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to clear dummy data: ' + err.message });
+  }
 });
 
 module.exports = router;
+

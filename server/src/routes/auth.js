@@ -12,44 +12,63 @@ router.post('/login', (req, res) => {
     return res.status(400).json({ error: 'Please provide identifier (email/phone/ID) and password' });
   }
 
-  // Find user by email, phone, or customer ID ref
-  let user = db.prepare(`
+  const trimmed = identifier.trim();
+
+  // Find candidates by email/username, phone, or superadmin alias
+  let candidates = db.prepare(`
     SELECT u.*, c.name as company_name, c.status as company_status, c.customer_prefix
     FROM users u
     LEFT JOIN companies c ON u.company_id = c.id
-    WHERE u.email = ? OR u.phone = ?
-    LIMIT 1
-  `).get(identifier.trim(), identifier.trim());
+    WHERE LOWER(u.email) = LOWER(?) 
+       OR u.phone = ?
+       OR (u.role = 'super_admin' AND LOWER(?) IN ('sagor@superadmin', 'sagor', 'sagor@superadmin.com'))
+  `).all(trimmed, trimmed, trimmed);
 
   // Also check if identifier matches a customer ID (e.g. DSN-000001)
-  if (!user) {
-    const cust = db.prepare(`SELECT * FROM customers WHERE customer_id = ?`).get(identifier.trim().toUpperCase());
+  if (candidates.length === 0) {
+    const cust = db.prepare(`SELECT * FROM customers WHERE customer_id = ?`).get(trimmed.toUpperCase());
     if (cust) {
-      user = db.prepare(`
+      const custUser = db.prepare(`
         SELECT u.*, c.name as company_name, c.status as company_status, c.customer_prefix
         FROM users u
         LEFT JOIN companies c ON u.company_id = c.id
         WHERE u.customer_id_ref = ?
         LIMIT 1
       `).get(cust.id);
+      if (custUser) candidates.push(custUser);
     }
   }
 
+  if (candidates.length === 0) {
+    return res.status(401).json({ error: 'ব্যবহারকারী পাওয়া যায়নি (User not found)। দয়া করে সঠিক আইডি, ইমেইল বা ফোন নম্বর দিন।' });
+  }
+
+  // Find the candidate whose password matches (handles cases where phone is shared between accounts)
+  let user = candidates.find(c => bcrypt.compareSync(password, c.password_hash));
   if (!user) {
-    return res.status(401).json({ error: 'Invalid credentials. User not found.' });
+    return res.status(401).json({ error: 'ভুল পাসওয়ার্ড (Invalid password)। দয়া করে সঠিক পাসওয়ার্ড দিন।' });
   }
 
-  if (user.status !== 'Active') {
-    return res.status(403).json({ error: 'Account is deactivated. Please contact support.' });
+  // Check if company is deactivated
+  const isCompanyDeactive = user.company_id && user.company_status && user.company_status !== 'Active';
+  if (isCompanyDeactive) {
+    if (user.role === 'company_admin') {
+      return res.status(403).json({ error: `আপনার কোম্পানি (${user.company_name || ''}) বর্তমানে Super Admin কর্তৃক Deactive আছে। ডেভেলপার এর সাথে যোগাযোগ করুন।` });
+    } else {
+      return res.status(403).json({ error: `আপনার কোম্পানি (${user.company_name || ''}) বর্তমানে Deactive আছে। কোম্পানির এডমিনের সাথে যোগাযোগ করুন।` });
+    }
   }
 
-  if (user.company_id && user.company_status !== 'Active') {
-    return res.status(403).json({ error: 'Your company subscription or status is deactivated.' });
-  }
-
-  const isPasswordValid = bcrypt.compareSync(password, user.password_hash);
-  if (!isPasswordValid) {
-    return res.status(401).json({ error: 'Invalid password. Please check your credentials.' });
+  // Check if user account itself is deactivated
+  const isUserDeactive = user.status && user.status !== 'Active';
+  if (isUserDeactive) {
+    if (user.role === 'company_admin') {
+      return res.status(403).json({ error: 'আপনার অ্যাকাউন্ট বর্তমানে Deactive আছে। ডেভেলপার এর সাথে যোগাযোগ করুন।' });
+    } else if (user.role === 'collector') {
+      return res.status(403).json({ error: 'আপনার কালেক্টর অ্যাকাউন্টটি বর্তমানে নিষ্ক্রিয় (Inactive/Deactive) আছে। এডমিনের সাথে যোগাযোগ করুন।' });
+    } else {
+      return res.status(403).json({ error: 'আপনার অ্যাকাউন্ট বর্তমানে Deactive আছে। এডমিনের সাথে যোগাযোগ করুন।' });
+    }
   }
 
   // If collector, attach assigned area info
@@ -76,6 +95,7 @@ router.post('/login', (req, res) => {
       name: user.name,
       email: user.email,
       phone: user.phone,
+      avatar: user.avatar,
       role: user.role,
       customer_id_ref: user.customer_id_ref,
       assignedAreas
@@ -126,22 +146,42 @@ router.post('/demo-switch', (req, res) => {
 
   if (email) {
     user = db.prepare(`SELECT * FROM users WHERE email = ? LIMIT 1`).get(email);
-  } else if (role === 'super_admin') {
-    user = db.prepare(`SELECT * FROM users WHERE role = 'super_admin' LIMIT 1`).get();
-  } else if (role === 'company_admin') {
-    user = db.prepare(`SELECT * FROM users WHERE role = 'company_admin' AND email = 'admin@dhakasky.com' LIMIT 1`).get();
-  } else if (role === 'collector') {
-    user = db.prepare(`SELECT * FROM users WHERE role = 'collector' AND email = 'kamal@dhakasky.com' LIMIT 1`).get();
-  } else if (role === 'customer') {
-    user = db.prepare(`SELECT * FROM users WHERE role = 'customer' LIMIT 1`).get();
+  }
+  if (!user && role) {
+    user = db.prepare(`SELECT * FROM users WHERE role = ? LIMIT 1`).get(role);
   }
 
   if (!user) {
-    return res.status(404).json({ error: 'Demo user not found' });
+    return res.status(404).json({ error: 'User for this role not found in the database. Please create a company/user first.' });
   }
 
   const token = generateToken(user);
   res.json({ token, user });
+});
+
+// GET /api/auth/login-settings (Public endpoint for login page branding)
+router.get('/login-settings', (req, res) => {
+  try {
+    const rows = db.prepare('SELECT * FROM platform_settings').all();
+    const settings = {};
+    rows.forEach(r => { settings[r.key] = r.value; });
+
+    res.json({
+      logo: settings.login_logo || '/uploads/billwave-logo.png',
+      logoBg: settings.login_logo_bg || 'white',
+      logoHeight: settings.login_logo_height || '56',
+      brandTitle: settings.login_brand_title || 'BillWave',
+      brandSubtitle: settings.login_brand_subtitle || 'Manage. Collect. Grow.',
+      cardTitleBn: settings.login_card_title_bn || 'অ্যাকাউন্টে প্রবেশ করুন',
+      cardTitleEn: settings.login_card_title_en || 'Sign in to your account',
+      cardSubtitleBn: settings.login_card_subtitle_bn || 'আপনার ইউজারনেম, ইমেইল, মোবাইল বা গ্রাহক আইডি লিখুন',
+      cardSubtitleEn: settings.login_card_subtitle_en || 'Enter your Username, Email, Phone, or Customer ID',
+      footerText: settings.login_footer_text || '© 2026 BillWave. All rights reserved.',
+      bgTheme: settings.login_bg_theme || 'light'
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to get login settings: ' + err.message });
+  }
 });
 
 module.exports = router;

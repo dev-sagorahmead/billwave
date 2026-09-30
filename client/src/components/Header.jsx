@@ -1,179 +1,161 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 import { useNavigate } from 'react-router-dom';
 import { 
-  Tv, LogOut, User, Shield, Building2, Wallet, 
-  ChevronDown, RefreshCw, Smartphone, Check
+  Tv, LogOut, User, Shield, Building2, Wallet
 } from 'lucide-react';
+import MarqueeNoticeBar from './MarqueeNoticeBar';
 
 export default function Header() {
-  const { user, company, logout, demoSwitch } = useAuth();
+  const { user, company, logout, returnToSuperAdmin, isSuperImpersonating } = useAuth();
+  const { t, isBn, changeLanguage } = useLanguage();
   const navigate = useNavigate();
-  const [showSwitchMenu, setShowSwitchMenu] = useState(false);
-  const [switching, setSwitching] = useState(false);
-
-  const handleRoleSwitch = async (role, email) => {
-    try {
-      setSwitching(true);
-      setShowSwitchMenu(false);
-      await demoSwitch(role, email);
-      navigate('/');
-    } catch (err) {
-      alert('Failed to switch: ' + err.message);
-    } finally {
-      setSwitching(false);
-    }
-  };
 
   const getRoleBadge = (role) => {
     switch (role) {
       case 'super_admin':
-        return <span className="bg-purple-100 text-purple-800 text-xs px-2.5 py-0.5 rounded-full font-semibold flex items-center gap-1"><Shield className="w-3 h-3" /> Super Admin</span>;
+        return <span className="bg-purple-100 text-purple-800 text-xs px-2.5 py-0.5 rounded-full font-semibold flex items-center gap-1"><Shield className="w-3 h-3" /> {t('role.superAdmin', 'Super Admin')}</span>;
       case 'company_admin':
-        return <span className="bg-blue-100 text-blue-800 text-xs px-2.5 py-0.5 rounded-full font-semibold flex items-center gap-1"><Building2 className="w-3 h-3" /> Company Admin</span>;
+        return <span className="bg-blue-100 text-blue-800 text-xs px-2.5 py-0.5 rounded-full font-semibold flex items-center gap-1"><Building2 className="w-3 h-3" /> {t('role.companyAdmin', 'Company Admin')}</span>;
       case 'collector':
-        return <span className="bg-emerald-100 text-emerald-800 text-xs px-2.5 py-0.5 rounded-full font-semibold flex items-center gap-1"><Wallet className="w-3 h-3" /> Bill Collector</span>;
+        return <span className="bg-emerald-100 text-emerald-800 text-xs px-2.5 py-0.5 rounded-full font-semibold flex items-center gap-1"><Wallet className="w-3 h-3" /> {t('role.collector', 'Bill Collector')}</span>;
       case 'customer':
-        return <span className="bg-amber-100 text-amber-800 text-xs px-2.5 py-0.5 rounded-full font-semibold flex items-center gap-1"><User className="w-3 h-3" /> Customer</span>;
+        return <span className="bg-amber-100 text-amber-800 text-xs px-2.5 py-0.5 rounded-full font-semibold flex items-center gap-1"><User className="w-3 h-3" /> {t('role.customer', 'Customer')}</span>;
       default:
         return null;
     }
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-sm no-print">
+    <>
+      {/* Super Admin Auto-Login Impersonation Active Banner */}
+      {isSuperImpersonating && (
+        <div className="bg-gradient-to-r from-purple-900 to-indigo-950 text-white px-4 py-2.5 text-xs font-semibold flex flex-col sm:flex-row items-center justify-between gap-2 shadow-md border-b border-purple-800 no-print z-50">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+            <Shield className="w-4 h-4 text-purple-300" />
+            <span>সুপার এডমিন অটো-লগইন মোড: আপনি বর্তমানে <strong>{company?.name}</strong>-এর কোম্পানি এডমিন হিসেবে ব্রাউজ করছেন</span>
+          </div>
+          <button
+            type="button"
+            onClick={async () => {
+              await returnToSuperAdmin();
+              navigate('/superadmin');
+            }}
+            className="px-3.5 py-1.5 bg-white text-purple-950 hover:bg-purple-100 rounded-lg text-xs font-bold transition-all shadow-sm whitespace-nowrap"
+          >
+            সুপার এডমিন প্যানেলে ফিরুন ➔
+          </button>
+        </div>
+      )}
+
+      {/* Marquee Announcement Ticker for targeted company or collector */}
+      <MarqueeNoticeBar />
+
+      <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-sm no-print">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           
-          {/* Brand & Company Details */}
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
-              <Tv className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-slate-900 text-base sm:text-lg leading-tight">
-                  {company ? company.name : 'DishBilling Cloud'}
-                </span>
-                {user && getRoleBadge(user.role)}
+          {/* Brand & Company Details / Large Logo */}
+          <div className="flex items-center min-w-0 pr-2 h-full">
+            {company?.logo ? (
+              <div className="flex items-center h-full py-0.5">
+                <img 
+                  src={company.logo} 
+                  alt={company.name || 'Company Logo'} 
+                  className="h-12 sm:h-14 md:h-[58px] max-h-[58px] w-auto max-w-[220px] sm:max-w-[340px] md:max-w-[420px] object-contain object-left drop-shadow-2xs transition-all"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                    if (e.currentTarget.nextElementSibling) {
+                      e.currentTarget.nextElementSibling.style.display = 'flex';
+                    }
+                  }}
+                />
+                {/* Fallback if logo fails to load */}
+                <div style={{ display: 'none' }} className="items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20 shrink-0">
+                    <Tv className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="font-bold text-slate-900 text-base leading-tight">
+                      {company ? company.name : 'DishBilling Cloud'}
+                    </span>
+                  </div>
+                </div>
               </div>
-              <p className="text-xs text-slate-500 flex items-center gap-1">
-                {user?.role === 'collector' && user.assignedAreas?.length > 0 ? (
-                  <span>Assigned: {user.assignedAreas.map(a => a.name).join(', ')}</span>
-                ) : company?.phone ? (
-                  <span>Support: {company.phone}</span>
-                ) : (
-                  <span>Multi-Tenant Cable TV Platform</span>
-                )}
-              </p>
-            </div>
+            ) : (
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20 shrink-0">
+                  <Tv className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-slate-900 text-base sm:text-lg leading-tight">
+                      {company ? company.name : 'DishBilling Cloud'}
+                    </span>
+                    {user && getRoleBadge(user.role)}
+                  </div>
+                  <p className="text-xs text-slate-500 flex items-center gap-1">
+                    {user?.role === 'collector' && user.assignedAreas?.length > 0 ? (
+                      <span>Assigned: {user.assignedAreas.map(a => a.name).join(', ')}</span>
+                    ) : company?.phone ? (
+                      <span>{t('header.support', 'Support:')} {company.phone}</span>
+                    ) : (
+                      <span>Multi-Tenant Cable TV Platform</span>
+                    )}
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Right actions: Demo Quick Switcher & User */}
-          <div className="flex items-center gap-2 sm:gap-4">
+          {/* Right actions: Language Switcher, User Profile & Logout */}
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
             
-            {/* Quick Role Switcher for Demo & Evaluation */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setShowSwitchMenu(!showSwitchMenu)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors border border-slate-300"
-                title="Quick switch roles to test full multi-tenant capabilities"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 text-blue-600 ${switching ? 'animate-spin' : ''}`} />
-                <span className="hidden md:inline">Switch Role Demo</span>
-                <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
-              </button>
-
-              {showSwitchMenu && (
-                <div className="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-xl border border-slate-200 py-2 z-50 animate-in fade-in slide-in-from-top-2">
-                  <div className="px-3 py-1.5 border-b border-slate-100 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                    Quick Role Switcher
-                  </div>
-
-                  <button
-                    onClick={() => handleRoleSwitch('super_admin')}
-                    className="w-full text-left px-3 py-2 text-xs hover:bg-purple-50 flex items-center justify-between group"
-                  >
-                    <div>
-                      <div className="font-semibold text-purple-900 group-hover:text-purple-700">1. Super Admin</div>
-                      <div className="text-slate-500 text-[11px]">Control all companies & platform</div>
-                    </div>
-                    {user?.role === 'super_admin' && <Check className="w-4 h-4 text-purple-600" />}
-                  </button>
-
-                  <button
-                    onClick={() => handleRoleSwitch('company_admin', 'admin@dhakasky.com')}
-                    className="w-full text-left px-3 py-2 text-xs hover:bg-blue-50 flex items-center justify-between group"
-                  >
-                    <div>
-                      <div className="font-semibold text-blue-900 group-hover:text-blue-700">2. Company Admin (Dhaka Sky)</div>
-                      <div className="text-slate-500 text-[11px]">Full control of Dhaka Sky company</div>
-                    </div>
-                    {user?.email === 'admin@dhakasky.com' && <Check className="w-4 h-4 text-blue-600" />}
-                  </button>
-
-                  <button
-                    onClick={() => handleRoleSwitch('company_admin', 'admin@ctgdigital.com')}
-                    className="w-full text-left px-3 py-2 text-xs hover:bg-sky-50 flex items-center justify-between group"
-                  >
-                    <div>
-                      <div className="font-semibold text-sky-900 group-hover:text-sky-700">2b. Company Admin (Chittagong)</div>
-                      <div className="text-slate-500 text-[11px]">Tests strict tenant isolation</div>
-                    </div>
-                    {user?.email === 'admin@ctgdigital.com' && <Check className="w-4 h-4 text-sky-600" />}
-                  </button>
-
-                  <button
-                    onClick={() => handleRoleSwitch('collector', 'kamal@dhakasky.com')}
-                    className="w-full text-left px-3 py-2 text-xs hover:bg-emerald-50 flex items-center justify-between group"
-                  >
-                    <div>
-                      <div className="font-semibold text-emerald-900 group-hover:text-emerald-700">3. Collector (Kamal - Mirpur)</div>
-                      <div className="text-slate-500 text-[11px]">Only Mirpur area customers</div>
-                    </div>
-                    {user?.email === 'kamal@dhakasky.com' && <Check className="w-4 h-4 text-emerald-600" />}
-                  </button>
-
-                  <button
-                    onClick={() => handleRoleSwitch('collector', 'tariq@dhakasky.com')}
-                    className="w-full text-left px-3 py-2 text-xs hover:bg-emerald-50 flex items-center justify-between group"
-                  >
-                    <div>
-                      <div className="font-semibold text-emerald-900 group-hover:text-emerald-700">3b. Collector (Tariq - Mohammadpur)</div>
-                      <div className="text-slate-500 text-[11px]">Mohammadpur & Dhanmondi areas</div>
-                    </div>
-                    {user?.email === 'tariq@dhakasky.com' && <Check className="w-4 h-4 text-emerald-600" />}
-                  </button>
-
-                  <button
-                    onClick={() => handleRoleSwitch('customer')}
-                    className="w-full text-left px-3 py-2 text-xs hover:bg-amber-50 flex items-center justify-between group"
-                  >
-                    <div>
-                      <div className="font-semibold text-amber-900 group-hover:text-amber-700">4. Customer Portal (DSN-000001)</div>
-                      <div className="text-slate-500 text-[11px]">View bill, payments, dues & receipts</div>
-                    </div>
-                    {user?.role === 'customer' && <Check className="w-4 h-4 text-amber-600" />}
-                  </button>
-                </div>
-              )}
-            </div>
+            {/* Quick 1-Tap Language Toggle (App style) */}
+            <button
+              type="button"
+              onClick={() => changeLanguage(isBn ? 'en' : 'bn')}
+              className="px-2 sm:px-2.5 py-1 rounded-xl text-[11px] sm:text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-all border border-slate-200 flex items-center gap-1 cursor-pointer active:scale-95 shadow-2xs"
+              title={isBn ? 'Switch to English' : 'বাংলায় পরিবর্তন করুন'}
+            >
+              <span className={isBn ? 'text-blue-600 font-extrabold' : 'text-slate-400 font-medium'}>বাং</span>
+              <span className="text-slate-300">|</span>
+              <span className={!isBn ? 'text-blue-600 font-extrabold' : 'text-slate-400 font-medium'}>EN</span>
+            </button>
 
             {/* User Profile / Logout */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2">
               <div className="hidden sm:block text-right">
-                <div className="text-xs font-semibold text-slate-800 leading-tight">{user?.name}</div>
+                <div className="text-xs font-semibold text-slate-800 leading-tight flex items-center justify-end gap-1.5">
+                  <span>{user?.name}</span>
+                  {user && getRoleBadge(user.role)}
+                </div>
                 <div className="text-[10px] text-slate-500">{user?.email}</div>
+              </div>
+
+              {/* Mobile Role Badge Pill */}
+              <div className="sm:hidden">
+                {user?.role === 'company_admin' && (
+                  <span className="text-[10px] font-bold bg-blue-50 text-blue-700 px-2 py-0.5 rounded-md border border-blue-200">
+                    এডমিন
+                  </span>
+                )}
+                {user?.role === 'collector' && (
+                  <span className="text-[10px] font-bold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-md border border-emerald-200">
+                    কালেক্টর
+                  </span>
+                )}
               </div>
 
               <button
                 type="button"
                 onClick={logout}
-                className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                title="Logout"
+                className="p-1.5 sm:p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all cursor-pointer active:scale-95"
+                title={t('nav.logout', 'Logout')}
               >
-                <LogOut className="w-5 h-5" />
+                <LogOut className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
             </div>
 
@@ -182,5 +164,6 @@ export default function Header() {
         </div>
       </div>
     </header>
+    </>
   );
 }

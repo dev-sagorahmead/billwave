@@ -26,7 +26,7 @@ function generateTransactionId() {
 // POST /api/payments/collect (Submit payment - Collectors & Admins)
 router.post('/collect', (req, res) => {
   const companyId = req.user.role === 'super_admin' ? (req.body.company_id || 1) : req.user.company_id;
-  const { customer_id, paid_amount, payment_method = 'Cash', notes, allow_advance = false } = req.body;
+  const { customer_id, paid_amount, payment_method = 'Cash', notes, allow_advance = false, billing_month } = req.body;
 
   if (!customer_id || paid_amount === undefined || isNaN(paid_amount)) {
     return res.status(400).json({ error: 'Customer ID and valid paid amount are required' });
@@ -36,6 +36,17 @@ router.post('/collect', (req, res) => {
   if (amount <= 0) {
     return res.status(400).json({ error: 'Payment amount must be greater than zero' });
   }
+
+  // Calculate default billing month: 1 month in arrears (e.g. In September, bill is for August)
+  const defaultBillingMonth = (() => {
+    const d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() - 1);
+    const yr = d.getFullYear();
+    const mo = String(d.getMonth() + 1).padStart(2, '0');
+    return `${yr}-${mo}`;
+  })();
+  const billMonth = (billing_month && billing_month.trim()) || defaultBillingMonth;
 
   // Fetch customer
   const customer = db.prepare(`
@@ -54,17 +65,63 @@ router.post('/collect', (req, res) => {
     if (!req.user.assignedAreaIds || !req.user.assignedAreaIds.includes(customer.area_id)) {
       return res.status(403).json({ error: 'Access denied: Customer does not belong to your assigned area' });
     }
+
+    // Closed Customer Check for Collectors:
+    // Requirement: "গ্রাহক বন্ধ থাকলে কালেক্টর ঐ গ্রাহকের বিল নিতে পারবে না। গ্রাহক একটিভ করতে পারবে কোম্পানির এডমিন।"
+    if (customer.status === 'Closed') {
+      return res.status(400).json({
+        error: `এই গ্রাহকের সংযোগ বন্ধ (Closed) রয়েছে। কালেক্টর বন্ধ গ্রাহকের বিল নিতে পারবেন না। কোম্পানির এডমিন একটিভ করার পর বিল নেওয়া যাবে।`,
+        code: 'CUSTOMER_CLOSED_COLLECTOR_BLOCKED'
+      });
+    }
   }
 
-  // Check overpayment rule (Requirement 13)
-  if (!allow_advance && amount > customer.current_due && customer.current_due > 0) {
+  // 2-minute Anti-Duplicate Payment Cooldown for the same customer
+  // Requirement: If a bill was collected for this customer within 2 minutes (120 seconds),
+  // collector must wait 2 minutes. Prevent duplicate entry and return clear message with remaining time.
+  const COOLDOWN_SECONDS = 120; // 2 minutes
+  const lastPayment = db.prepare(`
+    SELECT id, receipt_number, paid_amount, created_at, payment_time
+    FROM payments
+    WHERE customer_id = ?
+    ORDER BY id DESC
+    LIMIT 1
+  `).get(customer.id);
+
+  if (lastPayment && lastPayment.created_at) {
+    const lastPaymentTimeMs = new Date(lastPayment.created_at.replace(' ', 'T') + 'Z').getTime();
+    const elapsedSeconds = Math.floor((Date.now() - lastPaymentTimeMs) / 1000);
+
+    if (elapsedSeconds >= 0 && elapsedSeconds < COOLDOWN_SECONDS) {
+      const remainingSeconds = COOLDOWN_SECONDS - elapsedSeconds;
+      const min = Math.floor(remainingSeconds / 60);
+      const sec = remainingSeconds % 60;
+      const timeStr = min > 0 ? `${min} মিনিট ${sec} সেকেন্ড` : `${sec} সেকেন্ড`;
+
+      return res.status(429).json({
+        error: `এই গ্রাহকের বিল মাত্র গ্রহণ করা হয়েছে (${lastPayment.paid_amount} টাকা, রিসিট নং: ${lastPayment.receipt_number})। ভুলবশত ডাবল এন্ট্রি রোধ করতে অনুগ্রহ করে আরও ${timeStr} অপেক্ষা করুন।`,
+        code: 'PAYMENT_COOLDOWN',
+        remainingSeconds,
+        lastReceipt: lastPayment.receipt_number
+      });
+    }
+  }
+
+  const prevDue = Number(customer.current_due) || 0;
+
+  // Strict Validation: Overpayment not allowed
+  // Requirement: "গ্রাহকের যে বকেয়া আছে তা ছাড়া বেশি পরিমান টাকা বশিয়ে বিল কালেক্ট করে তাহলে বিল কালেক্ট হবে না । সাথে সাথে তাকে মেসেজ দিবে যে আপনি টাকা বেশি লিখেছেন"
+  if (amount > prevDue) {
     return res.status(400).json({
-      error: `Payment amount (${amount} BDT) exceeds customer outstanding balance (${customer.current_due} BDT). Overpayment not allowed.`
+      error: `আপনি টাকা বেশি লিখেছেন! গ্রাহকের বকেয়া আছে ${prevDue} টাকা। বকেয়ার চেয়ে বেশি টাকা গ্রহণ করা যাবে না।`,
+      code: 'OVERPAYMENT_NOT_ALLOWED',
+      currentDue: prevDue,
+      enteredAmount: amount
     });
   }
 
-  const prevDue = customer.current_due;
-  const remainingDue = Math.max(0, prevDue - amount);
+  const remainingDue = Number((prevDue - amount).toFixed(2));
+  let finalNotes = notes || '';
 
   const now = new Date();
   const paymentDate = now.toISOString().split('T')[0];
@@ -77,13 +134,13 @@ router.post('/collect', (req, res) => {
   const collectorName = collector ? collector.name : req.user.name;
 
   const paymentTx = db.transaction(() => {
-    // 1. Insert immutable payment transaction record
+    // 1. Insert immutable payment transaction record with billing_month
     const insertRes = db.prepare(`
       INSERT INTO payments (
         company_id, customer_id, collector_id, transaction_id, receipt_number,
         previous_due, paid_amount, remaining_due, payment_date, payment_time,
-        payment_method, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        payment_method, billing_month, notes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       companyId,
       customer.id,
@@ -96,12 +153,13 @@ router.post('/collect', (req, res) => {
       paymentDate,
       paymentTime,
       payment_method,
-      notes || ''
+      billMonth,
+      finalNotes
     );
 
     const paymentId = insertRes.lastInsertRowid;
 
-    // 2. Update customer outstanding balance
+    // 2. Update customer outstanding balance (becomes negative if advance collected)
     db.prepare(`
       UPDATE customers 
       SET previous_due = ?,
@@ -110,7 +168,7 @@ router.post('/collect', (req, res) => {
     `).run(prevDue, remainingDue, customer.id);
 
     // 3. Mark relevant generated bills as Paid or Partially Paid
-    if (remainingDue === 0) {
+    if (remainingDue <= 0) {
       db.prepare(`
         UPDATE bills 
         SET status = 'Paid' 
@@ -162,11 +220,15 @@ router.post('/collect', (req, res) => {
       paymentDate,
       paymentTime,
       paymentMethod: payment_method,
-      notes: notes || ''
+      billingMonth: billMonth,
+      notes: finalNotes
     };
 
     res.status(201).json({
       message: 'Payment collected successfully',
+      previousDue: prevDue,
+      paidAmount: amount,
+      remainingDue,
       receipt
     });
   } catch (err) {
@@ -241,6 +303,7 @@ router.get('/receipt/:receiptNumber', (req, res) => {
     paymentDate: payment.payment_date,
     paymentTime: payment.payment_time,
     paymentMethod: payment.payment_method,
+    billingMonth: payment.billing_month || '',
     notes: payment.notes
   });
 });
@@ -249,14 +312,16 @@ router.get('/receipt/:receiptNumber', (req, res) => {
 router.get('/', (req, res) => {
   const companyId = req.user.role === 'super_admin' ? (req.query.company_id || 1) : req.user.company_id;
   const {
-    date_filter = 'all', // 'today', 'yesterday', 'this_week', 'this_month', 'custom'
+    date_filter = 'all', // 'today', 'yesterday', 'this_week', 'this_month', 'last_month', 'custom'
+    month,
+    specific_date,
     start_date,
     end_date,
     collector_id,
     area_id,
     payment_method,
     search,
-    limit = 100,
+    limit = 500,
     page = 1
   } = req.query;
 
@@ -289,7 +354,13 @@ router.get('/', (req, res) => {
   }
 
   // Date filters
-  if (date_filter === 'today') {
+  if (specific_date) {
+    sql += ' AND p.payment_date = ?';
+    params.push(specific_date);
+  } else if (month && month !== 'all') {
+    sql += ' AND p.payment_date LIKE ?';
+    params.push(`${month}%`);
+  } else if (date_filter === 'today') {
     sql += ' AND p.payment_date = ?';
     params.push(todayStr);
   } else if (date_filter === 'yesterday') {
@@ -307,6 +378,13 @@ router.get('/', (req, res) => {
     const monthStr = todayStr.substring(0, 7);
     sql += ' AND p.payment_date LIKE ?';
     params.push(`${monthStr}%`);
+  } else if (date_filter === 'last_month') {
+    const d = new Date(today);
+    d.setDate(1);
+    d.setMonth(d.getMonth() - 1);
+    const lastMonthStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    sql += ' AND p.payment_date LIKE ?';
+    params.push(`${lastMonthStr}%`);
   } else if (date_filter === 'custom' || start_date || end_date) {
     if (start_date) {
       sql += ' AND p.payment_date >= ?';
@@ -363,8 +441,8 @@ router.get('/', (req, res) => {
   `;
   const methodBreakdown = db.prepare(methodBreakdownSql).all(...params);
 
-  // Pagination
-  sql += ' ORDER BY p.id DESC';
+  // Pagination with strict date-by-date chronological ordering
+  sql += ' ORDER BY p.payment_date DESC, p.id DESC';
   const offset = (Math.max(1, parseInt(page, 10)) - 1) * parseInt(limit, 10);
   sql += ' LIMIT ? OFFSET ?';
   params.push(parseInt(limit, 10), offset);

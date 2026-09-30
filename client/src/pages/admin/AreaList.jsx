@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../utils/api';
+import { useLanguage } from '../../context/LanguageContext';
 import { 
   MapPin, PlusCircle, Edit, Trash2, UserCheck, 
   Users, AlertCircle, CheckCircle2, XCircle, X, Loader2 
 } from 'lucide-react';
 
 export default function AreaList() {
+  const { isBn, formatStatus, formatCurrency } = useLanguage();
   const [areas, setAreas] = useState([]);
   const [collectors, setCollectors] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -75,7 +77,10 @@ export default function AreaList() {
   };
 
   const handleDeleteArea = async (area) => {
-    if (!confirm(`Are you sure you want to delete area "${area.name}"?`)) return;
+    const confirmMsg = isBn 
+      ? `আপনি কি নিশ্চিত যে "${area.name}" এলাকাটি মুছে ফেলতে চান?` 
+      : `Are you sure you want to delete area "${area.name}"?`;
+    if (!confirm(confirmMsg)) return;
     try {
       await api.deleteArea(area.id);
       fetchData();
@@ -101,7 +106,7 @@ export default function AreaList() {
       setAssignModalArea(null);
       fetchData();
     } catch (err) {
-      alert('Assignment failed: ' + err.message);
+      alert((isBn ? 'কালেক্টর বরাদ্দ ব্যর্থ হয়েছে: ' : 'Assignment failed: ') + err.message);
     } finally {
       setActionLoading(false);
     }
@@ -115,10 +120,12 @@ export default function AreaList() {
         <div>
           <h1 className="text-lg sm:text-xl font-black text-slate-900 flex items-center gap-2">
             <MapPin className="w-5 h-5 text-purple-600" />
-            <span>Area & Coverage Zone Management</span>
+            <span>{isBn ? 'এলাকা ও কভারেজ জোন ব্যবস্থাপনা' : 'Area & Coverage Zone Management'}</span>
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Organize service zones and allocate dedicated Bill Collectors to each area
+            {isBn 
+              ? 'সার্ভিস জোন পরিচালনা করুন এবং প্রতিটি এলাকায় নির্ধারিত বিল কালেক্টর বণ্টন করুন' 
+              : 'Organize service zones and allocate dedicated Bill Collectors to each area'}
           </p>
         </div>
 
@@ -128,7 +135,7 @@ export default function AreaList() {
           className="flex items-center gap-2 px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold shadow-md shadow-purple-600/20 transition-all"
         >
           <PlusCircle className="w-4 h-4" />
-          <span>Create New Area</span>
+          <span>{isBn ? 'নতুন এলাকা তৈরি' : 'Create New Area'}</span>
         </button>
       </div>
 
@@ -138,21 +145,21 @@ export default function AreaList() {
           <table className="w-full text-left text-xs text-slate-600">
             <thead className="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200">
               <tr>
-                <th className="p-3.5">Area Name</th>
-                <th className="p-3.5">Area Code</th>
-                <th className="p-3.5">Description</th>
-                <th className="p-3.5">Subscribers</th>
-                <th className="p-3.5">Total Area Due</th>
-                <th className="p-3.5">Assigned Collectors</th>
-                <th className="p-3.5">Status</th>
-                <th className="p-3.5 text-right">Actions</th>
+                <th className="p-3.5">{isBn ? 'এলাকার নাম' : 'Area Name'}</th>
+                <th className="p-3.5">{isBn ? 'এলাকা কোড' : 'Area Code'}</th>
+                <th className="p-3.5">{isBn ? 'বিবরণ' : 'Description'}</th>
+                <th className="p-3.5">{isBn ? 'গ্রাহক সংখ্যা' : 'Subscribers'}</th>
+                <th className="p-3.5">{isBn ? 'মোট এলাকার বকেয়া' : 'Total Area Due'}</th>
+                <th className="p-3.5">{isBn ? 'নির্ধারিত কালেক্টর' : 'Assigned Collectors'}</th>
+                <th className="p-3.5">{isBn ? 'স্ট্যাটাস' : 'Status'}</th>
+                <th className="p-3.5 text-right">{isBn ? 'অ্যাকশন' : 'Actions'}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {areas.length === 0 ? (
                 <tr>
                   <td colSpan="8" className="p-8 text-center text-slate-400">
-                    No areas found. Click "Create New Area" to add one!
+                    {isBn ? 'কোনো এলাকা পাওয়া যায়নি। নতুন এলাকা যোগ করতে "নতুন এলাকা তৈরি" চাপুন!' : 'No areas found. Click "Create New Area" to add one!'}
                   </td>
                 </tr>
               ) : (
@@ -166,23 +173,23 @@ export default function AreaList() {
                     </td>
                     <td className="p-3.5 text-slate-500 max-w-xs truncate">{a.description || '-'}</td>
                     <td className="p-3.5 font-bold text-slate-800">
-                      {a.customer_count} ({a.active_customers} Active)
+                      {a.customer_count} ({a.active_customers} {isBn ? 'সক্রিয়' : 'Active'})
                     </td>
                     <td className="p-3.5 font-mono font-black text-rose-600">
-                      {a.total_due} BDT
+                      {formatCurrency(a.total_due || 0)}
                     </td>
                     <td className="p-3.5">
                       {a.assigned_collectors ? (
                         <span className="text-emerald-700 font-medium">{a.assigned_collectors}</span>
                       ) : (
-                        <span className="text-slate-400 italic">None assigned</span>
+                        <span className="text-slate-400 italic">{isBn ? 'নির্ধারিত নেই' : 'None assigned'}</span>
                       )}
                     </td>
                     <td className="p-3.5">
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                         a.status === 'Active' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'
                       }`}>
-                        {a.status}
+                        {formatStatus(a.status)}
                       </span>
                     </td>
                     <td className="p-3.5 text-right space-x-1 whitespace-nowrap">
@@ -190,14 +197,15 @@ export default function AreaList() {
                         type="button"
                         onClick={() => openAssignModal(a)}
                         className="px-2.5 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-lg text-xs font-semibold"
-                        title="Assign Collectors"
+                        title={isBn ? 'কালেক্টর বরাদ্দ' : 'Assign Collectors'}
                       >
-                        Assign Collector
+                        {isBn ? 'কালেক্টর বরাদ্দ' : 'Assign Collector'}
                       </button>
                       <button
                         type="button"
-                        onClick={() => setEditingArea(a)}
+                        onClick={() => setEditingArea({ ...a })}
                         className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg"
+                        title={isBn ? 'সম্পাদনা' : 'Edit'}
                       >
                         <Edit className="w-4 h-4" />
                       </button>
@@ -205,6 +213,7 @@ export default function AreaList() {
                         type="button"
                         onClick={() => handleDeleteArea(a)}
                         className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg"
+                        title={isBn ? 'মুছুন' : 'Delete'}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -222,7 +231,7 @@ export default function AreaList() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4">
             <div className="flex justify-between items-center pb-3 border-b border-slate-200">
-              <h3 className="font-bold text-base text-slate-900">Create New Area</h3>
+              <h3 className="font-bold text-base text-slate-900">{isBn ? 'নতুন এলাকা তৈরি' : 'Create New Area'}</h3>
               <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
               </button>
@@ -230,54 +239,143 @@ export default function AreaList() {
 
             <form onSubmit={handleCreateArea} className="space-y-4 text-xs">
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Area Name *</label>
+                <label className="block font-semibold text-slate-700 mb-1">{isBn ? 'এলাকার নাম *' : 'Area Name *'}</label>
                 <input
                   type="text"
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Mirpur, Mohammadpur, Uttara"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                  placeholder={isBn ? 'যেমন: মিরপুর, মোহাম্মদপুর, উত্তরা' : 'e.g. Mirpur, Mohammadpur, Uttara'}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Area Code *</label>
+                <label className="block font-semibold text-slate-700 mb-1">{isBn ? 'এলাকা কোড *' : 'Area Code *'}</label>
                 <input
                   type="text"
                   required
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
                   placeholder="e.g. MIR, MOH, UTT"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono uppercase"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono uppercase focus:ring-2 focus:ring-purple-500 focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Description</label>
+                <label className="block font-semibold text-slate-700 mb-1">{isBn ? 'বিবরণ' : 'Description'}</label>
                 <input
                   type="text"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="e.g. Sections 1 to 14"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                  placeholder={isBn ? 'যেমন: সেকশন ১ থেকে ১৪' : 'e.g. Sections 1 to 14'}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:outline-none"
                 />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">{isBn ? 'স্ট্যাটাস' : 'Status'}</label>
+                <select
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                >
+                  <option value="Active">{isBn ? 'সক্রিয়' : 'Active'}</option>
+                  <option value="Inactive">{isBn ? 'নিষ্ক্রিয়' : 'Inactive'}</option>
+                </select>
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 font-semibold text-slate-600"
+                  className="px-4 py-2 font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
                 >
-                  Cancel
+                  {isBn ? 'বাতিল' : 'Cancel'}
                 </button>
                 <button
                   type="submit"
                   disabled={actionLoading}
-                  className="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold"
+                  className="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold shadow-md shadow-purple-600/20"
                 >
-                  Create Area
+                  {actionLoading ? (isBn ? 'তৈরি হচ্ছে...' : 'Creating...') : (isBn ? 'এলাকা তৈরি করুন' : 'Create Area')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Edit Area */}
+      {editingArea && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4">
+            <div className="flex justify-between items-center pb-3 border-b border-slate-200">
+              <h3 className="font-bold text-base text-slate-900">{isBn ? 'এলাকা সম্পাদনা' : 'Edit Area'}</h3>
+              <button onClick={() => setEditingArea(null)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleEditArea} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">{isBn ? 'এলাকার নাম *' : 'Area Name *'}</label>
+                <input
+                  type="text"
+                  required
+                  value={editingArea.name || ''}
+                  onChange={(e) => setEditingArea({ ...editingArea, name: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">{isBn ? 'এলাকা কোড *' : 'Area Code *'}</label>
+                <input
+                  type="text"
+                  required
+                  value={editingArea.code || ''}
+                  onChange={(e) => setEditingArea({ ...editingArea, code: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono uppercase focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">{isBn ? 'বিবরণ' : 'Description'}</label>
+                <input
+                  type="text"
+                  value={editingArea.description || ''}
+                  onChange={(e) => setEditingArea({ ...editingArea, description: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">{isBn ? 'স্ট্যাটাস' : 'Status'}</label>
+                <select
+                  value={editingArea.status || 'Active'}
+                  onChange={(e) => setEditingArea({ ...editingArea, status: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                >
+                  <option value="Active">{isBn ? 'সক্রিয়' : 'Active'}</option>
+                  <option value="Inactive">{isBn ? 'নিষ্ক্রিয়' : 'Inactive'}</option>
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingArea(null)}
+                  className="px-4 py-2 font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
+                >
+                  {isBn ? 'বাতিল' : 'Cancel'}
+                </button>
+                <button
+                  type="submit"
+                  disabled={actionLoading}
+                  className="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold shadow-md shadow-purple-600/20"
+                >
+                  {actionLoading ? (isBn ? 'সংরক্ষণ হচ্ছে...' : 'Saving...') : (isBn ? 'আপডেট করুন' : 'Update Area')}
                 </button>
               </div>
             </form>
@@ -291,7 +389,7 @@ export default function AreaList() {
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4">
             <div className="flex justify-between items-center pb-3 border-b border-slate-200">
               <h3 className="font-bold text-base text-slate-900">
-                Assign Collectors to {assignModalArea.name}
+                {isBn ? `${assignModalArea.name} এলাকায় কালেক্টর বরাদ্দ` : `Assign Collectors to ${assignModalArea.name}`}
               </h3>
               <button onClick={() => setAssignModalArea(null)} className="text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
@@ -299,12 +397,16 @@ export default function AreaList() {
             </div>
 
             <p className="text-xs text-slate-500">
-              Selected collectors will be granted permission to access and collect from subscribers in this area.
+              {isBn 
+                ? 'নির্বাচিত কালেক্টররা এই এলাকার গ্রাহকদের বিল গ্রহণ ও দেখার অনুমতি পাবেন।' 
+                : 'Selected collectors will be granted permission to access and collect from subscribers in this area.'}
             </p>
 
             <div className="space-y-2 max-h-56 overflow-y-auto border border-slate-200 rounded-xl p-3">
               {collectors.length === 0 ? (
-                <div className="text-xs text-slate-400 p-2">No collectors available. Create collectors first.</div>
+                <div className="text-xs text-slate-400 p-2">
+                  {isBn ? 'কোনো কালেক্টর নেই। প্রথমে কালেক্টর তৈরি করুন।' : 'No collectors available. Create collectors first.'}
+                </div>
               ) : (
                 collectors.map((col) => {
                   const isChecked = selectedCollectorIds.includes(col.id);
@@ -336,17 +438,17 @@ export default function AreaList() {
               <button
                 type="button"
                 onClick={() => setAssignModalArea(null)}
-                className="px-4 py-2 text-xs font-semibold text-slate-600"
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
               >
-                Cancel
+                {isBn ? 'বাতিল' : 'Cancel'}
               </button>
               <button
                 type="button"
                 disabled={actionLoading}
                 onClick={handleSaveAssignments}
-                className="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold"
+                className="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold shadow-md shadow-purple-600/20"
               >
-                Save Assignments
+                {actionLoading ? (isBn ? 'সংরক্ষণ হচ্ছে...' : 'Saving...') : (isBn ? 'সংরক্ষণ করুন' : 'Save Assignments')}
               </button>
             </div>
           </div>

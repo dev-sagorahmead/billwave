@@ -38,7 +38,7 @@ function generateNextCustomerId(companyId) {
 // GET /api/customers (Search, filter, paginate)
 router.get('/', (req, res) => {
   const companyId = req.user.role === 'super_admin' ? (req.query.company_id || 1) : req.user.company_id;
-  const { search, area_id, package_id, status, due_type, sort_by = 'id_desc', limit = 100, page = 1 } = req.query;
+  const { search, area_id, package_id, status, due_type, sort_by = 'id_desc', limit = 100, page = 1, ids } = req.query;
 
   let sql = `
     SELECT 
@@ -52,6 +52,12 @@ router.get('/', (req, res) => {
         FROM payments 
         WHERE customer_id = c.id
       ) as last_payment_date,
+      (
+        SELECT created_at 
+        FROM payments 
+        WHERE customer_id = c.id
+        ORDER BY id DESC LIMIT 1
+      ) as last_payment_created_at,
       (
         SELECT COALESCE(SUM(paid_amount), 0)
         FROM payments
@@ -71,6 +77,16 @@ router.get('/', (req, res) => {
     }
     sql += ` AND c.area_id IN (${req.user.assignedAreaIds.map(() => '?').join(',')})`;
     params.push(...req.user.assignedAreaIds);
+  }
+
+  // Filter by specific customer IDs (for bulk selection or targeted export)
+  if (ids) {
+    const idList = String(ids).split(',').map(x => Number(x)).filter(x => !isNaN(x) && x > 0);
+    if (idList.length > 0) {
+      const placeholders = idList.map(() => '?').join(',');
+      sql += ` AND c.id IN (${placeholders})`;
+      params.push(...idList);
+    }
   }
 
   // Filter by Area
@@ -155,6 +171,106 @@ router.get('/', (req, res) => {
   });
 });
 
+// POST /api/customers/bulk-status (Bulk change status: Active, Closed, Free)
+router.post('/bulk-status', (req, res) => {
+  if (!['company_admin', 'super_admin'].includes(req.user.role)) {
+    return res.status(403).json({ error: 'Access denied: Company Admin only' });
+  }
+
+  const companyId = req.user.role === 'super_admin' ? (req.body.company_id || 1) : req.user.company_id;
+  const { customer_ids, status, notes } = req.body;
+
+  if (!Array.isArray(customer_ids) || customer_ids.length === 0) {
+    return res.status(400).json({ error: 'অন্তত একজন গ্রাহক সিলেক্ট করুন' });
+  }
+
+  if (!['Active', 'Free', 'Closed'].includes(status)) {
+    return res.status(400).json({ error: 'Status must be Active, Free, or Closed' });
+  }
+
+  const validIds = customer_ids.map(id => Number(id)).filter(id => !isNaN(id) && id > 0);
+  if (validIds.length === 0) {
+    return res.status(400).json({ error: 'No valid customer IDs provided' });
+  }
+
+  const updateTx = db.transaction((ids) => {
+    const placeholders = ids.map(() => '?').join(',');
+    const stmt = db.prepare(`
+      UPDATE customers 
+      SET status = ?,
+          notes = CASE 
+            WHEN ? IS NOT NULL THEN notes || ' | ' || ?
+            ELSE notes 
+          END
+      WHERE id IN (${placeholders}) AND company_id = ?
+    `);
+    const noteText = notes ? `Status changed to ${status}: ${notes}` : `Bulk status updated to ${status}`;
+    return stmt.run(status, noteText, noteText, ...ids, companyId);
+  });
+
+  try {
+    const result = updateTx(validIds);
+    const statusBangla = status === 'Active' ? 'Active (একটিভ)' : status === 'Closed' ? 'Closed (ডিঅ্যাক্টিভ/বন্ধ)' : 'Free (ফ্রি)';
+    res.json({
+      message: `সফলভাবে ${result.changes} জন গ্রাহকের স্ট্যাটাস "${statusBangla}" করা হয়েছে।`,
+      updatedCount: result.changes,
+      status
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Bulk status update failed: ' + err.message });
+  }
+});
+
+// POST /api/customers/bulk-delete (Bulk delete customers)
+router.post('/bulk-delete', (req, res) => {
+  if (!['company_admin', 'super_admin'].includes(req.user.role)) {
+    return res.status(403).json({ error: 'Access denied: Company Admin only' });
+  }
+
+  const companyId = req.user.role === 'super_admin' ? (req.body.company_id || 1) : req.user.company_id;
+  const { customer_ids } = req.body;
+
+  if (!Array.isArray(customer_ids) || customer_ids.length === 0) {
+    return res.status(400).json({ error: 'অন্তত একজন গ্রাহক সিলেক্ট করুন' });
+  }
+
+  const validIds = customer_ids.map(id => Number(id)).filter(id => !isNaN(id) && id > 0);
+  if (validIds.length === 0) {
+    return res.status(400).json({ error: 'No valid customer IDs provided' });
+  }
+
+  const deleteTx = db.transaction((ids) => {
+    const placeholders = ids.map(() => '?').join(',');
+    const matching = db.prepare(`SELECT id, user_id FROM customers WHERE id IN (${placeholders}) AND company_id = ?`).all(...ids, companyId);
+    if (matching.length === 0) return { changes: 0 };
+    
+    const matchedIds = matching.map(m => m.id);
+    const matchedPlaceholders = matchedIds.map(() => '?').join(',');
+
+    db.prepare(`DELETE FROM payments WHERE customer_id IN (${matchedPlaceholders})`).run(...matchedIds);
+    db.prepare(`DELETE FROM bills WHERE customer_id IN (${matchedPlaceholders})`).run(...matchedIds);
+    
+    const userIds = matching.map(m => m.user_id).filter(Boolean);
+    if (userIds.length > 0) {
+      const uPlaceholders = userIds.map(() => '?').join(',');
+      db.prepare(`DELETE FROM users WHERE id IN (${uPlaceholders}) AND role = 'customer'`).run(...userIds);
+    }
+
+    const delStmt = db.prepare(`DELETE FROM customers WHERE id IN (${matchedPlaceholders}) AND company_id = ?`);
+    return delStmt.run(...matchedIds, companyId);
+  });
+
+  try {
+    const result = deleteTx(validIds);
+    res.json({
+      message: `সফলভাবে ${result.changes} জন গ্রাহককে ডিলেট করা হয়েছে।`,
+      deletedCount: result.changes
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Bulk delete failed: ' + err.message });
+  }
+});
+
 // GET /api/customers/:id (Detailed Profile)
 router.get('/:id', (req, res) => {
   const companyId = req.user.role === 'super_admin' ? (req.query.company_id || 1) : req.user.company_id;
@@ -165,7 +281,13 @@ router.get('/:id', (req, res) => {
       a.name as area_name,
       a.code as area_code,
       p.name as package_name,
-      p.price as package_price
+      p.price as package_price,
+      (
+        SELECT created_at 
+        FROM payments 
+        WHERE customer_id = c.id
+        ORDER BY id DESC LIMIT 1
+      ) as last_payment_created_at
     FROM customers c
     LEFT JOIN areas a ON c.area_id = a.id
     LEFT JOIN packages p ON c.package_id = p.id
@@ -218,6 +340,46 @@ router.get('/:id', (req, res) => {
     },
     payments,
     bills
+  });
+});
+
+// GET /api/customers/:id/payments (Complete payment history for customer)
+router.get('/:id/payments', (req, res) => {
+  const companyId = req.user.role === 'super_admin' ? (req.query.company_id || 1) : req.user.company_id;
+  const customer = db.prepare(`
+    SELECT id, company_id, customer_id, name, phone, address, area_id, current_due, monthly_bill, status
+    FROM customers
+    WHERE (id = ? OR customer_id = ?) AND company_id = ?
+  `).get(req.params.id, req.params.id, companyId);
+
+  if (!customer) {
+    return res.status(404).json({ error: 'Customer not found' });
+  }
+
+  // Collector area check
+  if (req.user.role === 'collector') {
+    if (!req.user.assignedAreaIds || !req.user.assignedAreaIds.includes(customer.area_id)) {
+      return res.status(403).json({ error: 'Unauthorized to view this customer' });
+    }
+  }
+
+  const payments = db.prepare(`
+    SELECT 
+      p.*,
+      u.name as collector_name,
+      comp.name as company_name
+    FROM payments p
+    LEFT JOIN users u ON p.collector_id = u.id
+    LEFT JOIN companies comp ON p.company_id = comp.id
+    WHERE p.customer_id = ?
+    ORDER BY p.id DESC
+  `).all(customer.id);
+
+  res.json({
+    customer,
+    payments,
+    totalPaid: payments.reduce((sum, p) => sum + p.paid_amount, 0),
+    totalCount: payments.length
   });
 });
 
@@ -444,15 +606,25 @@ router.post('/import/preview', (req, res) => {
   }
 
   const companyId = req.user.role === 'super_admin' ? (req.body.company_id || 1) : req.user.company_id;
-  const { rows } = req.body; // Array of objects
+  const { rows, default_status = 'Active', default_area_id } = req.body;
 
   if (!Array.isArray(rows) || rows.length === 0) {
     return res.status(400).json({ error: 'No data rows provided for import' });
   }
 
   // Pre-fetch existing areas, packages, and customer IDs for fast validation
-  const existingAreas = db.prepare('SELECT id, name, code FROM areas WHERE company_id = ?').all(companyId);
-  const existingPackages = db.prepare('SELECT id, name, price FROM packages WHERE company_id = ?').all(companyId);
+  let existingAreas = db.prepare('SELECT id, name, code FROM areas WHERE company_id = ?').all(companyId);
+  if (existingAreas.length === 0) {
+    db.prepare(`INSERT INTO areas (company_id, name, code, description, status) VALUES (?, 'Main Zone', 'MAIN', 'Default Area', 'Active')`).run(companyId);
+    existingAreas = db.prepare('SELECT id, name, code FROM areas WHERE company_id = ?').all(companyId);
+  }
+
+  let existingPackages = db.prepare('SELECT id, name, price FROM packages WHERE company_id = ?').all(companyId);
+  if (existingPackages.length === 0) {
+    db.prepare(`INSERT INTO packages (company_id, name, price, description, status) VALUES (?, 'Regular', 150, 'Standard Package', 'Active')`).run(companyId);
+    existingPackages = db.prepare('SELECT id, name, price FROM packages WHERE company_id = ?').all(companyId);
+  }
+
   const existingCustIds = new Set(
     db.prepare('SELECT customer_id FROM customers WHERE company_id = ?').all(companyId).map(r => r.customer_id.toUpperCase())
   );
@@ -468,87 +640,94 @@ router.post('/import/preview', (req, res) => {
     packageMap[p.name.toLowerCase().trim()] = { id: p.id, price: p.price };
   });
 
+  // Default fallback area
+  const fallbackArea = (default_area_id && existingAreas.find(a => String(a.id) === String(default_area_id))) || existingAreas[0];
+
   const validatedRows = [];
   const errors = [];
   let validCount = 0;
   let invalidCount = 0;
 
-  const seenPhonesInBatch = new Set();
   const seenCustIdsInBatch = new Set();
 
   rows.forEach((row, index) => {
     const rowErrors = [];
     const rowNum = index + 1;
 
-    // Field extraction (flexible naming support)
-    const name = (row.name || row['Customer Name'] || row.customer_name || '').toString().trim();
-    const phone = (row.phone || row['Phone'] || row['Phone Number'] || row.phone_number || '').toString().trim();
-    const address = (row.address || row['Address'] || '').toString().trim();
-    const areaName = (row.area || row['Area'] || row.area_name || '').toString().trim();
-    const packageName = (row.package || row['Package'] || row.package_name || '').toString().trim();
-    const rawBill = row.monthly_bill || row['Monthly Bill'] || row.bill;
-    const rawPrevDue = row.previous_due || row['Previous Due'] || row.due || 0;
-    const status = (row.status || row['Status'] || 'Active').toString().trim();
-    const connDate = (row.connection_date || row['Connection Date'] || new Date().toISOString().split('T')[0]).toString().trim();
-    const customId = (row.customer_id || row['Customer ID'] || '').toString().trim();
+    // Field extraction (flexible naming support for Bengali & English: ID, Name, Address, Mobile, Monthly Fee, Due)
+    const customId = (row.ID || row.id || row.Id || row.customer_id || row['Customer ID'] || row['গ্রাহক আইডি'] || '').toString().trim();
+    const name = (row.Name || row.name || row['Customer Name'] || row.customer_name || row['গ্রাহকের নাম'] || '').toString().trim();
+    const address = (row.Address || row.address || row['ঠিকানা'] || '').toString().trim();
+    const phone = (row.Mobile || row.mobile || row['Mobile No'] || row['Mobile Number'] || row.phone || row['Phone'] || row['Phone Number'] || row.phone_number || row['মোবাইল'] || '').toString().trim();
+    const rawArea = (row.Area || row.area || row.area_name || row['Area Name'] || row['এরিয়া'] || '').toString().trim();
+    const packageName = (row.Package || row.package || row.package_name || row['Package Name'] || row['প্যাকেজ'] || '').toString().trim();
+    const rawBill = row['Monthly Fee'] !== undefined ? row['Monthly Fee'] : (row['monthly_fee'] !== undefined ? row['monthly_fee'] : (row.monthly_bill !== undefined ? row.monthly_bill : (row['Monthly Bill'] !== undefined ? row['Monthly Bill'] : (row.bill !== undefined ? row.bill : row.fee))));
+    const rawPrevDue = row['Due'] !== undefined ? row['Due'] : (row['due'] !== undefined ? row['due'] : (row.previous_due !== undefined ? row.previous_due : (row['Previous Due'] !== undefined ? row['Previous Due'] : row.balance)));
+    const connDate = (row.connection_date || row['Connection Date'] || row['সংযুক্তির তারিখ'] || new Date().toISOString().split('T')[0]).toString().trim();
 
-    // 1. Validate required fields
-    if (!name) rowErrors.push('Missing customer name');
-    if (!phone) rowErrors.push('Missing phone number');
-    if (!address) rowErrors.push('Missing address');
-    if (!areaName) rowErrors.push('Missing area');
-
-    // 2. Validate phone number
-    const cleanPhone = phone.replace(/[^0-9]/g, '');
-    if (phone && (cleanPhone.length < 10 || cleanPhone.length > 14)) {
-      rowErrors.push(`Invalid phone number: ${phone}`);
+    // Line Status: default to request default_status ('Active' or 'Closed'), or row.status if specified
+    let normalizedStatus = default_status === 'Closed' ? 'Closed' : 'Active';
+    const rowStatusRaw = row.Status || row.status || row['স্ট্যাটাস'];
+    if (rowStatusRaw) {
+      const s = rowStatusRaw.toString().trim().toLowerCase();
+      if (s === 'closed' || s === 'বন্ধ' || s === 'inactive') normalizedStatus = 'Closed';
+      else if (s === 'free' || s === 'ফ্রি') normalizedStatus = 'Free';
+      else if (s === 'active' || s === 'একটিভ' || s === 'সচল') normalizedStatus = 'Active';
     }
 
-    // 3. Validate Area
-    let matchedAreaId = null;
-    if (areaName) {
-      matchedAreaId = areaMap[areaName.toLowerCase()];
-      if (!matchedAreaId) {
-        rowErrors.push(`Area "${areaName}" not found in system`);
+    // 1. Validate required field: Name
+    if (!name) {
+      rowErrors.push('গ্রাহকের নাম অনুপস্থিত (Missing customer name)');
+    }
+
+    // 2. Resolve Area
+    let matchedAreaId = fallbackArea.id;
+    let matchedAreaName = fallbackArea.name;
+    if (rawArea) {
+      const foundId = areaMap[rawArea.toLowerCase()];
+      if (foundId) {
+        matchedAreaId = foundId;
+        const matchedA = existingAreas.find(a => a.id === foundId);
+        matchedAreaName = matchedA ? matchedA.name : rawArea;
       }
     }
 
-    // 4. Validate Package
-    let matchedPkgId = null;
-    let pkgPrice = 150;
+    // 3. Resolve Package & Monthly Bill
+    let matchedPkgId = existingPackages[0].id;
+    let matchedPkgName = existingPackages[0].name;
+    let pkgPrice = existingPackages[0].price;
+
     if (packageName) {
       const pkgInfo = packageMap[packageName.toLowerCase()];
       if (pkgInfo) {
         matchedPkgId = pkgInfo.id;
         pkgPrice = pkgInfo.price;
-      } else {
-        rowErrors.push(`Package "${packageName}" not found in system`);
+        matchedPkgName = packageName;
       }
-    } else {
-      // Default to Regular
-      const regularPkg = packageMap['regular'] || Object.values(packageMap)[0];
-      if (regularPkg) {
-        matchedPkgId = regularPkg.id;
-        pkgPrice = regularPkg.price;
+    } else if (rawBill !== undefined && rawBill !== '') {
+      // Find package with matching price
+      const priceNum = Number(rawBill);
+      const pkgWithPrice = existingPackages.find(p => p.price === priceNum);
+      if (pkgWithPrice) {
+        matchedPkgId = pkgWithPrice.id;
+        matchedPkgName = pkgWithPrice.name;
+        pkgPrice = pkgWithPrice.price;
       }
     }
 
-    // 5. Validate Customer ID duplicate
+    const monthlyBill = (rawBill !== undefined && rawBill !== '' && !isNaN(Number(rawBill))) ? Number(rawBill) : pkgPrice;
+    const prevDue = (!isNaN(Number(rawPrevDue))) ? Number(rawPrevDue) : 0;
+
+    // 4. Validate Customer ID duplicate if provided
     if (customId) {
       if (existingCustIds.has(customId.toUpperCase())) {
-        rowErrors.push(`Duplicate Customer ID "${customId}" already exists in system`);
+        rowErrors.push(`গ্রাহক আইডি "${customId}" ইতিমধ্যে সিস্টেমে বিদ্যমান (Duplicate Customer ID)`);
       }
       if (seenCustIdsInBatch.has(customId.toUpperCase())) {
-        rowErrors.push(`Duplicate Customer ID "${customId}" repeated in file`);
+        rowErrors.push(`ফাইলে গ্রাহক আইডি "${customId}" একাধিকবার এসেছে (Repeated Customer ID in file)`);
       }
       seenCustIdsInBatch.add(customId.toUpperCase());
     }
-
-    // 6. Validate Status
-    const normalizedStatus = ['Active', 'Free', 'Closed'].find(s => s.toLowerCase() === status.toLowerCase()) || 'Active';
-
-    const monthlyBill = rawBill !== undefined && rawBill !== '' ? Number(rawBill) : pkgPrice;
-    const prevDue = Number(rawPrevDue) || 0;
 
     const item = {
       rowNum,
@@ -557,9 +736,9 @@ router.post('/import/preview', (req, res) => {
       phone,
       address,
       area_id: matchedAreaId,
-      area_name: areaName,
+      area_name: matchedAreaName,
       package_id: matchedPkgId,
-      package_name: packageName,
+      package_name: matchedPkgName,
       monthly_bill: monthlyBill,
       previous_due: prevDue,
       current_due: prevDue,
@@ -624,12 +803,12 @@ router.post('/import/confirm', (req, res) => {
 
       const custId = r.customer_id || generateNextCustomerId(companyId);
       const res = insertCustStmt.run(
-        companyId, custId, r.name, r.phone, r.address, r.area_id, r.package_id,
+        companyId, custId, r.name, r.phone || '', r.address || '', r.area_id, r.package_id,
         r.monthly_bill, r.connection_date, r.status, r.previous_due, r.current_due
       );
 
       insertUserStmt.run(
-        companyId, r.name, `${custId.toLowerCase()}@customer.dish`, r.phone, passHash, res.lastInsertRowid
+        companyId, r.name, `${custId.toLowerCase()}@customer.dish`, r.phone || null, passHash, res.lastInsertRowid
       );
 
       imported++;

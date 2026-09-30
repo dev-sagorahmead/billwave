@@ -144,7 +144,7 @@ router.post('/:id/assign-collectors', (req, res) => {
       const insertStmt = db.prepare('INSERT OR IGNORE INTO collector_areas (collector_id, area_id) VALUES (?, ?)');
       for (const colId of collector_ids) {
         // Verify collector belongs to same company
-        const col = db.prepare('SELECT id FROM users WHERE id = ? AND company_id = ? AND role = "collector"').get(colId, companyId);
+        const col = db.prepare("SELECT id FROM users WHERE id = ? AND company_id = ? AND role = 'collector'").get(colId, companyId);
         if (col) {
           insertStmt.run(colId, req.params.id);
         }
