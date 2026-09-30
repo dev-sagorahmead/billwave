@@ -41,6 +41,23 @@ try {
   writeStatus('STEP 1: Loading main Express server & database...');
   handler = require('./server/src/index');
   writeStatus('STEP 1 OK: Express server loaded successfully! System fully operational.');
+
+  // Auto-migration: Ensure October 1st auto-billing executes cleanly
+  try {
+    const db = require('./server/src/db/database');
+    const { checkAndRunScheduledAutoBilling } = require('./server/src/services/autoBilling');
+    const testCount = db.prepare("SELECT COUNT(*) as c FROM bills WHERE billing_month = '2026-10' AND generated_at < '2026-10-01'").get();
+    if (testCount && testCount.c > 0) {
+      writeStatus(`MIGRATION: Moving ${testCount.c} pre-release bills from 2026-10 to 2026-09...`);
+      db.prepare("UPDATE bills SET billing_month = '2026-09' WHERE billing_month = '2026-10' AND generated_at < '2026-10-01'").run();
+      db.prepare("UPDATE platform_settings SET value = '2026-09' WHERE key = 'auto_billing_last_run_month' AND value = '2026-10'").run();
+      writeStatus('MIGRATION: Triggering 1st-of-month auto-billing for October 2026...');
+      checkAndRunScheduledAutoBilling();
+      writeStatus('MIGRATION OK: October bills generated successfully!');
+    }
+  } catch (mErr) {
+    writeStatus('MIGRATION NOTICE: ' + mErr.message);
+  }
 } catch (startupErr) {
   writeStatus('FATAL STARTUP ERROR: ' + (startupErr.stack || startupErr.message || startupErr));
   

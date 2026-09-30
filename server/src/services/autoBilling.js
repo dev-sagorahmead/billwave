@@ -189,6 +189,18 @@ function checkAndRunScheduledAutoBilling() {
   const day = bdDate.getDate();
   const currentMonth = getBangladeshYearMonth(bdDate);
 
+  // Migrate pre-October test bills generated in September so October 1st runs cleanly
+  try {
+    const testCount = db.prepare("SELECT COUNT(*) as c FROM bills WHERE billing_month = '2026-10' AND generated_at < '2026-10-01'").get();
+    if (testCount && testCount.c > 0) {
+      console.log(`[AutoBilling] Found ${testCount.c} pre-release bills from September tagged as 2026-10. Moving them to 2026-09...`);
+      db.prepare("UPDATE bills SET billing_month = '2026-09' WHERE billing_month = '2026-10' AND generated_at < '2026-10-01'").run();
+      db.prepare("UPDATE platform_settings SET value = '2026-09' WHERE key = 'auto_billing_last_run_month' AND value = '2026-10'").run();
+    }
+  } catch (e) {
+    console.error('[AutoBilling] Migration error:', e.message);
+  }
+
   // Requirement: Bills auto-generate on the 1st of every month (30/31 ends -> 1st begins)
   if (day === 1) {
     const lastRunSetting = db.prepare(`
