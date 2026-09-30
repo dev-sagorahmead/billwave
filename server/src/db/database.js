@@ -10,9 +10,17 @@ if (!fs.existsSync(dataDir)) {
 const dbPath = path.join(dataDir, 'dish.db');
 const db = new Database(dbPath);
 
-// Enable WAL mode for high concurrency & performance
-db.pragma('journal_mode = WAL');
+// Enable WAL mode for high concurrency & performance (with fallback for restricted shared hosting)
+try {
+  db.pragma('journal_mode = WAL');
+} catch (walErr) {
+  console.warn('SQLite WAL mode warning (fallback to DELETE):', walErr.message);
+  try {
+    db.pragma('journal_mode = DELETE');
+  } catch (e) {}
+}
 db.pragma('foreign_keys = ON');
+
 
 function initSchema() {
   db.exec(`

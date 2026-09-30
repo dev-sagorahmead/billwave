@@ -1,0 +1,1 @@
+# Phusion Passenger / LiteSpeed restart trigger
