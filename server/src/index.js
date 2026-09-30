@@ -79,3 +79,6 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`Health check: http://192.168.1.4:${PORT}/api/health`);
   console.log(`=======================================================`);
 });
+
+module.exports = app;
+
