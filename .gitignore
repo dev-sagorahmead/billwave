@@ -8,3 +8,6 @@ server/data/*.db-shm
 server/data/*.db-wal
 .DS_Store
 /dist/
+update-fix.zip
+status.txt
+server/data/dish.db.backup

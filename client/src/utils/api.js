@@ -1,4 +1,14 @@
-const API_BASE = '/api';
+import { Capacitor } from '@capacitor/core';
+
+// Automatically detect native mobile app vs web browser
+const isNative = typeof window !== 'undefined' && (
+  (window.Capacitor && Capacitor.isNativePlatform()) ||
+  window.location.protocol === 'capacitor:' ||
+  (window.location.hostname === 'localhost' && window.location.port !== '5173' && window.location.port !== '5000')
+);
+
+export const BACKEND_URL = import.meta.env.VITE_API_URL || (isNative ? 'https://fcnwifi.shop' : '');
+export const API_BASE = `${BACKEND_URL}/api`;
 
 export function getToken() {
   return localStorage.getItem('dish_auth_token');
@@ -90,7 +100,7 @@ export const api = {
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
-    const res = await fetch('/api/superadmin/upload-login-logo', {
+    const res = await fetch(`${API_BASE}/superadmin/upload-login-logo`, {
       method: 'POST',
       headers,
       body: formData
@@ -112,7 +122,7 @@ export const api = {
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
-    const res = await fetch('/api/company/upload-logo', {
+    const res = await fetch(`${API_BASE}/company/upload-logo`, {
       method: 'POST',
       headers,
       body: formData
@@ -142,7 +152,7 @@ export const api = {
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
-    const res = await fetch('/api/collectors/upload-avatar', {
+    const res = await fetch(`${API_BASE}/collectors/upload-avatar`, {
       method: 'POST',
       headers,
       body: formData
