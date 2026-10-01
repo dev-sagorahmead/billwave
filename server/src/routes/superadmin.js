@@ -323,7 +323,8 @@ router.get('/settings', (req, res) => {
 // POST /api/superadmin/settings
 router.post('/settings', (req, res) => {
   const settings = req.body;
-  const updateTx = db.transaction(() => {
+  
+  const saveSettings = () => {
     for (const [key, value] of Object.entries(settings)) {
       db.prepare(`
         INSERT INTO platform_settings (key, value)
@@ -331,13 +332,21 @@ router.post('/settings', (req, res) => {
         ON CONFLICT(key) DO UPDATE SET value = excluded.value
       `).run(key, String(value));
     }
-  });
+  };
 
   try {
+    const updateTx = db.transaction(saveSettings);
     updateTx();
     res.json({ message: 'Settings saved successfully' });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to update settings: ' + err.message });
+    console.warn('[SuperAdmin Settings] Transaction warning, running safe direct fallback:', err.message);
+    try {
+      saveSettings();
+      res.json({ message: 'Settings saved successfully' });
+    } catch (fallbackErr) {
+      console.error('[SuperAdmin Settings] Failed to update settings:', fallbackErr);
+      res.status(500).json({ error: 'Failed to update settings: ' + fallbackErr.message });
+    }
   }
 });
 

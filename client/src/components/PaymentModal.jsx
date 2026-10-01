@@ -159,198 +159,185 @@ export default function PaymentModal({ customer, onSuccess, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden my-6">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-900/60 backdrop-blur-xs animate-in fade-in overflow-y-auto"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden my-auto max-h-[92vh] flex flex-col border border-slate-200">
         
-        {/* Header */}
-        <div className="bg-gradient-to-r from-blue-700 to-indigo-700 text-white p-5 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-white/10 rounded-xl">
-              <Wallet className="w-6 h-6 text-white" />
+        {/* Header - Compact with prominent Close Button */}
+        <div className="bg-gradient-to-r from-blue-700 via-indigo-700 to-blue-800 text-white px-4 py-3 flex items-center justify-between shrink-0 shadow-xs">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 bg-white/15 rounded-lg shrink-0">
+              <Wallet className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h2 className="font-bold text-base leading-tight">
-                {isBn ? 'বিল আদায় করুন' : 'Collect Bill Payment'}
+              <h2 className="font-bold text-sm leading-tight">
+                {isBn ? 'বিল আদায়' : 'Collect Payment'}
               </h2>
-              <p className="text-xs text-blue-100 mt-0.5">
-                {isBn ? 'সহজ ও দ্রুত বিল সংগ্রহ' : 'Quick touch mobile collection'}
+              <p className="text-[11px] text-blue-100 font-mono mt-0.5">
+                {customer.customer_id} • {customer.name}
               </p>
             </div>
           </div>
+          
+          {/* Prominent High-Contrast Close Icon Button */}
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 text-blue-200 hover:text-white rounded-lg transition-colors"
+            className="p-1.5 bg-white/20 hover:bg-white/35 active:scale-95 text-white rounded-full transition-all flex items-center justify-center shadow-xs border border-white/25"
+            title={isBn ? 'বন্ধ করুন' : 'Close'}
+            aria-label="Close"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4 stroke-[2.5]" />
           </button>
         </div>
 
-        {/* Customer Info Card */}
-        <div className="bg-slate-50 border-b border-slate-200 p-4">
-          <div className="flex justify-between items-start">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-slate-900 text-sm">{customer.name}</span>
-                <span className="text-[11px] font-mono bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded">
-                  {customer.customer_id}
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 mt-0.5">{customer.phone} • {customer.area_name || customer.area || (isBn ? 'প্রধান এলাকা' : 'Main Area')}</p>
-            </div>
-
-            <div className="text-right">
-              <span className="text-[10px] text-slate-500 uppercase tracking-wider block">
-                {isBn ? 'বর্তমান বকেয়া' : 'Outstanding Due'}
-              </span>
-              <span className={`text-lg font-bold font-mono ${currentDue > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-                {formatCurrency(currentDue)}
-              </span>
-            </div>
+        {/* Customer Quick Info Bar */}
+        <div className="bg-slate-50 border-b border-slate-200 px-4 py-2 flex items-center justify-between shrink-0">
+          <div>
+            <span className="text-[10px] text-slate-500 uppercase tracking-wider block font-semibold">
+              {isBn ? 'বর্তমান বকেয়া' : 'Current Due'}
+            </span>
+            <span className={`text-base font-bold font-mono ${currentDue > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+              {formatCurrency(currentDue)}
+            </span>
           </div>
-
-          <div className="mt-2.5 pt-2 border-t border-slate-200/80 flex items-center justify-between">
+          <div className="text-right flex items-center gap-2">
+            <span className="text-[11px] text-slate-600 font-medium">
+              {isBn ? `মাসিক: ${monthlyBill} ৳` : `Monthly: ${monthlyBill} BDT`}
+            </span>
             <button
               type="button"
               onClick={() => setShowHistoryModal(true)}
-              className="text-xs text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1.5 py-1 px-2.5 bg-blue-50 hover:bg-blue-100 rounded-lg border border-blue-200 transition-colors shadow-2xs"
+              className="text-[11px] text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1 py-0.5 px-2 bg-blue-50 hover:bg-blue-100 rounded-md border border-blue-200 transition-colors shadow-2xs"
+              title={isBn ? 'পূর্বের বিল হিস্টরি' : 'History'}
             >
-              <History className="w-3.5 h-3.5 text-blue-600" />
-              <span>{isBn ? 'পূর্বের বিল হিস্টরি দেখুন' : 'View Payment History'}</span>
+              <History className="w-3 h-3 text-blue-600" />
+              <span>{isBn ? 'হিস্টরি' : 'History'}</span>
             </button>
-            <span className="text-[11px] text-slate-500 font-medium">
-              {isBn ? `মাসিক বিল: ${monthlyBill} ৳` : `Monthly Bill: ${monthlyBill} BDT`}
-            </span>
           </div>
         </div>
 
-        {/* Payment Form */}
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+        {/* Payment Form - Compact & Scrollable */}
+        <form onSubmit={handleSubmit} className="p-3.5 space-y-2.5 overflow-y-auto flex-1">
           
           {/* Closed Customer Warning for Collectors */}
           {isCollector && isClosed && (
-            <div className="p-3.5 bg-rose-50 border border-rose-300 rounded-xl text-rose-900 text-xs flex items-start gap-2.5 shadow-xs">
-              <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
-              <div className="space-y-1">
-                <div className="font-bold text-rose-950">
-                  {isBn ? 'সংযোগ বন্ধ (গ্রাহক নিষ্ক্রিয়)' : 'Disconnected Line (Closed Subscriber)'}
-                </div>
-                <p className="text-[11px] text-rose-700 leading-relaxed">
-                  {isBn 
-                    ? 'এই গ্রাহকের সংযোগ বন্ধ আছে। কোম্পানির এডমিন একটিভ না করা পর্যন্ত কালেক্টর বন্ধ গ্রাহকের বিল আদায় করতে পারবেন না।'
-                    : 'This customer line is closed. Collectors cannot collect bill until Company Admin activates this customer.'}
-                </p>
+            <div className="p-2.5 bg-rose-50 border border-rose-300 rounded-xl text-rose-900 text-xs flex items-start gap-2 shadow-xs">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              <div className="text-[11px] leading-tight">
+                <strong className="text-rose-950 block">{isBn ? 'সংযোগ বন্ধ' : 'Disconnected'}</strong>
+                {isBn 
+                  ? 'গ্রাহক বন্ধ থাকায় কালেক্টর বিল নিতে পারবেন না।' 
+                  : 'Customer line closed. Collector cannot collect.'}
               </div>
             </div>
           )}
 
           {/* 2-Minute Anti-Duplicate Cooldown Alert Banner */}
           {cooldownSeconds > 0 && (
-            <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-xl text-amber-900 text-xs flex items-start gap-2.5 shadow-xs">
-              <Clock className="w-5 h-5 text-amber-600 shrink-0 mt-0.5 animate-pulse" />
-              <div className="space-y-1">
-                <div className="font-bold flex items-center justify-between text-amber-950">
-                  <span>{isBn ? 'ডাবল পেমেন্ট সুরক্ষা সক্রিয়' : 'Double Payment Guard Active'}</span>
-                  <span className="font-mono px-2 py-0.5 bg-amber-200 text-amber-950 rounded-md font-black text-xs">
-                    {formatCooldownTime(cooldownSeconds)}
-                  </span>
-                </div>
-                <p className="text-[11px] text-amber-800 leading-tight">
-                  {isBn 
-                    ? 'এই গ্রাহকের বিল মাত্র গ্রহণ করা হয়েছে। ভুলবশত একই বিল একাধিকবার এন্ট্রি রোধ করতে অনুগ্রহ করে ২ মিনিট অপেক্ষা করুন।'
-                    : 'Payment was just collected for this customer. Please wait 2 minutes to prevent duplicate entry.'}
-                </p>
+            <div className="p-2.5 bg-amber-50 border border-amber-300 rounded-xl text-amber-900 text-xs flex items-center justify-between gap-2 shadow-xs">
+              <div className="flex items-center gap-1.5">
+                <Clock className="w-4 h-4 text-amber-600 shrink-0 animate-pulse" />
+                <span className="text-[11px] font-semibold">{isBn ? 'ডাবল পেমেন্ট সুরক্ষা:' : 'Duplicate guard:'}</span>
               </div>
+              <span className="font-mono px-2 py-0.5 bg-amber-200 text-amber-950 rounded font-black text-xs">
+                {formatCooldownTime(cooldownSeconds)}
+              </span>
             </div>
           )}
 
           {error && (
-            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
-              <span>{error}</span>
+            <div className="p-2 bg-rose-50 border border-rose-200 rounded-lg text-rose-700 text-xs flex items-center gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0 text-rose-600" />
+              <span className="text-[11px] leading-tight">{error}</span>
             </div>
           )}
 
-          {/* Quick Amount Suggestion Badges */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-2">
-              {isBn ? 'দ্রুত শর্টকাট' : 'Quick Payment Shortcuts'}
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {currentDue > 0 && (
-                <button
-                  type="button"
-                  onClick={() => handleQuickAmount(currentDue)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                    amount === currentDue 
-                      ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
-                      : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
-                  }`}
-                >
-                  {isBn ? `পূর্ণ বকেয়া (${formatCurrency(currentDue)})` : `Full Due (${formatCurrency(currentDue)})`}
-                </button>
-              )}
+          {/* Quick Shortcuts */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[11px] font-semibold text-slate-500">{isBn ? 'শর্টকাট:' : 'Quick:'}</span>
+            {currentDue > 0 && (
+              <button
+                type="button"
+                onClick={() => handleQuickAmount(currentDue)}
+                className={`px-2 py-0.5 rounded-md text-[11px] font-semibold border transition-all ${
+                  amount === currentDue 
+                    ? 'bg-blue-600 border-blue-600 text-white shadow-2xs'
+                    : 'bg-slate-50 border-slate-300 text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                {isBn ? `পূর্ণ (${formatCurrency(currentDue)})` : `Full (${formatCurrency(currentDue)})`}
+              </button>
+            )}
 
-              {monthlyBill > 0 && monthlyBill !== currentDue && (
-                <button
-                  type="button"
-                  onClick={() => handleQuickAmount(monthlyBill)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                    amount === monthlyBill 
-                      ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
-                      : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
-                  }`}
-                >
-                  {isBn ? `১ মাস (${formatCurrency(monthlyBill)})` : `1 Month (${formatCurrency(monthlyBill)})`}
-                </button>
-              )}
+            {monthlyBill > 0 && monthlyBill !== currentDue && (
+              <button
+                type="button"
+                onClick={() => handleQuickAmount(monthlyBill)}
+                className={`px-2 py-0.5 rounded-md text-[11px] font-semibold border transition-all ${
+                  amount === monthlyBill 
+                    ? 'bg-blue-600 border-blue-600 text-white shadow-2xs'
+                    : 'bg-slate-50 border-slate-300 text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                {isBn ? `১ মাস (${formatCurrency(monthlyBill)})` : `1 Mo (${formatCurrency(monthlyBill)})`}
+              </button>
+            )}
 
-              {currentDue > 200 && (
-                <button
-                  type="button"
-                  onClick={() => handleQuickAmount(Math.round(currentDue / 2))}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium border bg-white border-slate-300 text-slate-700 hover:bg-slate-50"
-                >
-                  {isBn ? `অর্ধেক (${formatCurrency(Math.round(currentDue / 2))})` : `Half (${formatCurrency(Math.round(currentDue / 2))})`}
-                </button>
-              )}
-            </div>
+            {currentDue > 200 && (
+              <button
+                type="button"
+                onClick={() => handleQuickAmount(Math.round(currentDue / 2))}
+                className="px-2 py-0.5 rounded-md text-[11px] font-semibold border bg-slate-50 border-slate-300 text-slate-700 hover:bg-slate-100"
+              >
+                {isBn ? `অর্ধেক (${formatCurrency(Math.round(currentDue / 2))})` : `Half (${formatCurrency(Math.round(currentDue / 2))})`}
+              </button>
+            )}
           </div>
 
-          {/* Billing Month Selection (Cable TV standard: 1 month in arrears) */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label htmlFor="billing-month" className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                <Calendar className="w-4 h-4 text-blue-600" />
-                {isBn ? 'বিলের মাস' : 'Billing Month'} *
+          {/* 2-Column: Billing Month & Payment Method */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label htmlFor="billing-month" className="block text-[11px] font-semibold text-slate-700 mb-1">
+                {isBn ? 'বিলের মাস' : 'Month'} *
               </label>
-              <span className="text-[11px] font-semibold px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full border border-blue-200">
-                {formatBillingMonth(billingMonth, isBn ? 'bengali' : 'english')}
-              </span>
+              <select
+                id="billing-month"
+                value={billingMonth}
+                onChange={(e) => setBillingMonth(e.target.value)}
+                className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+              >
+                {getBillingMonthOptions().map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {formatBillingMonth(opt.value, isBn ? 'bengali' : 'english')}
+                  </option>
+                ))}
+              </select>
             </div>
-            <select
-              id="billing-month"
-              value={billingMonth}
-              onChange={(e) => setBillingMonth(e.target.value)}
-              className="w-full px-3 py-2.5 bg-white border border-slate-300 rounded-xl text-sm font-medium text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-xs"
-            >
-              {getBillingMonthOptions().map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {formatBillingMonth(opt.value, isBn ? 'bengali' : 'english')}
-                </option>
-              ))}
-            </select>
-            <p className="text-[11px] text-slate-500 mt-1">
-              {isBn 
-                ? '* ১ মাস বকেয়া বিলের নিয়ম অনুযায়ী স্বয়ংক্রিয়ভাবে গত মাস নির্বাচিত'
-                : '* Auto-selected based on 1-month arrears billing standard'}
-            </p>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                {isBn ? 'মাধ্যম' : 'Method'} *
+              </label>
+              <select
+                value={method}
+                onChange={(e) => setMethod(e.target.value)}
+                className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+              >
+                <option value="Cash">{isBn ? 'নগদ ক্যাশ' : 'Cash'}</option>
+                <option value="bKash">bKash</option>
+                <option value="Nagad">Nagad</option>
+                <option value="Bank">{isBn ? 'ব্যাংক' : 'Bank'}</option>
+              </select>
+            </div>
           </div>
 
           {/* Payment Amount Input */}
           <div>
-            <label htmlFor="pay-amount" className="block text-xs font-semibold text-slate-700 mb-1">
-              {isBn ? 'পরিশোধিত টাকার পরিমাণ' : 'Payment Amount'} ({isBn ? 'টাকা' : 'BDT'}) *
+            <label htmlFor="pay-amount" className="block text-[11px] font-semibold text-slate-700 mb-1">
+              {isBn ? 'পরিশোধিত টাকার পরিমাণ' : 'Amount'} ({isBn ? 'টাকা' : 'BDT'}) *
             </label>
             <div className="relative">
               <input
@@ -361,147 +348,113 @@ export default function PaymentModal({ customer, onSuccess, onClose }) {
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 required
-                className="w-full pl-4 pr-16 py-3 bg-white border border-slate-300 rounded-xl text-lg font-bold font-mono text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder={isBn ? 'টাকার পরিমাণ লিখুন' : 'Enter amount'}
+                className="w-full pl-3 pr-12 py-2 bg-white border border-slate-300 rounded-xl text-base font-bold font-mono text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-hidden shadow-2xs"
+                placeholder={isBn ? 'টাকা লিখুন' : 'Enter amount'}
               />
-              <span className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-slate-400 text-sm">
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 font-bold text-slate-400 text-xs">
                 {isBn ? 'টাকা' : 'BDT'}
               </span>
             </div>
           </div>
 
-          {/* Live Real-time Due Calculation Preview */}
-          <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 space-y-1.5 text-xs">
-            <div className="flex justify-between text-slate-500">
-              <span>{isBn ? 'পূর্বের বকেয়া:' : 'Previous Balance:'}</span>
-              <span className="font-mono">{formatCurrency(currentDue)}</span>
-            </div>
-            <div className="flex justify-between text-slate-500">
-              <span>{isBn ? 'আদায় করা হচ্ছে:' : 'Amount Collecting:'}</span>
-              <span className="font-mono font-semibold text-blue-600">- {formatCurrency(numAmount)}</span>
-            </div>
-            <div className="flex justify-between text-slate-800 font-bold pt-1 border-t border-slate-200 text-sm">
-              <span>{isBn ? 'অবশিষ্ট বকেয়া:' : 'Remaining Due:'}</span>
-              <span className={`font-mono ${remainingDue > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
-                {formatCurrency(remainingDue)}
-              </span>
+          {/* Live Due Calculation Preview - Compact */}
+          <div className="bg-slate-50 rounded-lg p-2 border border-slate-200 text-[11px] space-y-1">
+            <div className="flex justify-between items-center text-slate-600">
+              <span>{isBn ? 'আদায় করা হচ্ছে:' : 'Collecting:'} <strong className="font-mono text-blue-700">{formatCurrency(numAmount)}</strong></span>
+              <span>{isBn ? 'অবশিষ্ট বকেয়া:' : 'Remaining:'} <strong className={`font-mono font-bold ${remainingDue > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>{formatCurrency(remainingDue)}</strong></span>
             </div>
             {isOverpaying && (
-              <div className="flex justify-between items-center text-xs font-bold text-rose-700 bg-rose-50 px-2 py-1.5 rounded-lg border border-rose-200">
-                <span>{isBn ? '⚠️ অতিরিক্ত লেখা হয়েছে:' : '⚠️ Excess Amount:'}</span>
-                <span className="font-mono text-sm">+{formatCurrency(Number((numAmount - currentDue).toFixed(2)))}</span>
+              <div className="flex justify-between items-center text-[11px] font-bold text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">
+                <span>{isBn ? '⚠️ অতিরিক্ত টাকা:' : '⚠️ Excess:'}</span>
+                <span className="font-mono">+{formatCurrency(Number((numAmount - currentDue).toFixed(2)))}</span>
               </div>
             )}
           </div>
 
-          {/* Overpayment Warning Card - Blocked collection notification */}
+          {/* Overpayment Warning Card */}
           {isOverpaying && (
-            <div className="p-3.5 bg-rose-50 border border-rose-300 rounded-xl text-xs space-y-1.5 text-rose-900 shadow-xs animate-in fade-in">
-              <div className="flex items-center gap-1.5 font-bold text-rose-950 text-sm">
-                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                <span>{isBn ? 'আপনি টাকা বেশি লিখেছেন!' : 'You entered excess amount!'}</span>
+            <div className="p-2.5 bg-rose-50 border border-rose-300 rounded-xl text-xs space-y-1 text-rose-900 shadow-xs">
+              <div className="flex items-center gap-1 font-bold text-rose-950 text-xs">
+                <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                <span>{isBn ? 'আপনি টাকা বেশি লিখেছেন!' : 'Excess amount!'}</span>
               </div>
-              <p className="text-[12px] text-rose-800 leading-snug">
-                {isBn ? (
-                  <>
-                    গ্রাহকের বর্তমান বকেয়া <strong className="font-mono font-bold text-rose-950">{currentDue} ৳</strong>। আপনি লিখেছেন <strong className="font-mono font-bold text-rose-950">{numAmount} ৳</strong> (অতিরিক্ত {Number((numAmount - currentDue).toFixed(2))} ৳)। বকেয়ার চেয়ে বেশি টাকা দিয়ে বিল আদায় করা যাবে না।
-                  </>
-                ) : (
-                  <>
-                    Customer current due is <strong className="font-mono font-bold text-rose-950">{currentDue} BDT</strong>. You entered <strong className="font-mono font-bold text-rose-950">{numAmount} BDT</strong> (excess {Number((numAmount - currentDue).toFixed(2))} BDT). You cannot collect more than the due amount.
-                  </>
-                )}
+              <p className="text-[11px] text-rose-800 leading-tight">
+                {isBn 
+                  ? `বকেয়া আছে ${currentDue} ৳। বকেয়ার চেয়ে বেশি টাকা গ্রহণ করা যাবে না।`
+                  : `Due is ${currentDue} BDT. Cannot collect more than due.`}
               </p>
               <button
                 type="button"
                 onClick={() => setAmount(currentDue)}
-                className="mt-1 px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold text-xs transition-colors shadow-2xs"
+                className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded font-bold text-[10px] transition-colors"
               >
-                {isBn ? `সঠিক বকেয়া টাকা (${currentDue} ৳) বসান` : `Set Exact Due (${currentDue} BDT)`}
+                {isBn ? `সঠিক বকেয়া (${currentDue} ৳) সেট করুন` : `Set Exact Due (${currentDue})`}
               </button>
             </div>
           )}
 
-          {/* Payment Method Selector */}
+          {/* Notes (Optional) */}
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-2">
-              {isBn ? 'পরিশোধের মাধ্যম' : 'Payment Method'} *
-            </label>
-            <div className="grid grid-cols-4 gap-2">
-              {['Cash', 'bKash', 'Nagad', 'Bank'].map((m) => {
-                const label = isBn ? (m === 'Cash' ? 'নগদ ক্যাশ' : m === 'Bank' ? 'ব্যাংক' : m) : m;
-                return (
-                  <button
-                    key={m}
-                    type="button"
-                    onClick={() => setMethod(m)}
-                    className={`py-2 px-1 text-center rounded-xl text-xs font-semibold border transition-all ${
-                      method === m
-                        ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
-                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Notes */}
-          <div>
-            <label htmlFor="pay-notes" className="block text-xs font-semibold text-slate-700 mb-1">
-              {isBn ? 'নোট / বিবরণ (ঐচ্ছিক)' : 'Notes (Optional)'}
-            </label>
             <input
               id="pay-notes"
               type="text"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder={isBn ? 'যেমন: চলতি মাসের ক্যাবল বিল' : 'e.g. Monthly bill for September'}
-              className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              placeholder={isBn ? 'নোট / বিবরণ (ঐচ্ছিক)' : 'Notes (optional)'}
+              className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
             />
           </div>
 
-          {/* Submit Button */}
-          <button
-            type="submit"
-            disabled={submitting || numAmount <= 0 || isOverpaying || cooldownSeconds > 0 || (isCollector && isClosed)}
-            className={`w-full py-3.5 px-4 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all mt-2 ${
-              (isCollector && isClosed) || isOverpaying
-                ? 'bg-rose-600 opacity-90 cursor-not-allowed shadow-md shadow-rose-600/20'
-                : cooldownSeconds > 0
-                ? 'bg-amber-600 opacity-90 cursor-not-allowed shadow-md shadow-amber-600/20'
-                : 'bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 shadow-md shadow-emerald-600/20'
-            }`}
-          >
-            {submitting ? (
-              <>
-                <Loader2 className="w-5 h-5 animate-spin" />
-                <span>{isBn ? 'পেমেন্ট সম্পন্ন হচ্ছে...' : 'Processing Payment...'}</span>
-              </>
-            ) : isCollector && isClosed ? (
-              <>
-                <AlertCircle className="w-5 h-5 text-white" />
-                <span>{isBn ? 'সংযোগ বন্ধ (বিল নেওয়া যাবে না)' : 'Line Closed (Cannot collect bill)'}</span>
-              </>
-            ) : isOverpaying ? (
-              <>
-                <AlertCircle className="w-5 h-5 text-white animate-pulse" />
-                <span>{isBn ? `টাকা বেশি লিখেছেন (${numAmount} > ${currentDue} ৳)` : `Excess Amount (${numAmount} > ${currentDue})`}</span>
-              </>
-            ) : cooldownSeconds > 0 ? (
-              <>
-                <Clock className="w-5 h-5 animate-pulse" />
-                <span>{isBn ? `অপেক্ষা করুন (${formatCooldownTime(cooldownSeconds)})` : `Wait (${formatCooldownTime(cooldownSeconds)})`}</span>
-              </>
-            ) : (
-              <>
-                <span>{isBn ? `আদায় নিশ্চিত করুন (${formatCurrency(numAmount)})` : `Confirm & Collect ${formatCurrency(numAmount)}`}</span>
-                <ArrowRight className="w-4 h-4" />
-              </>
-            )}
-          </button>
+          {/* Action Buttons: Cancel and Confirm */}
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className="py-2.5 px-3 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 rounded-xl font-bold text-xs flex items-center justify-center gap-1 transition-colors border border-slate-300 shadow-2xs"
+            >
+              <X className="w-3.5 h-3.5" />
+              <span>{isBn ? 'বাতিল' : 'Cancel'}</span>
+            </button>
+
+            <button
+              type="submit"
+              disabled={submitting || numAmount <= 0 || isOverpaying || cooldownSeconds > 0 || (isCollector && isClosed)}
+              className={`flex-1 py-2.5 px-3 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-md ${
+                (isCollector && isClosed) || isOverpaying
+                  ? 'bg-rose-600 opacity-90 cursor-not-allowed shadow-rose-600/20'
+                  : cooldownSeconds > 0
+                  ? 'bg-amber-600 opacity-90 cursor-not-allowed shadow-amber-600/20'
+                  : 'bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] disabled:opacity-50 shadow-emerald-600/20'
+              }`}
+            >
+              {submitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>{isBn ? 'প্রসেসিং...' : 'Processing...'}</span>
+                </>
+              ) : isCollector && isClosed ? (
+                <>
+                  <AlertCircle className="w-3.5 h-3.5 text-white" />
+                  <span>{isBn ? 'সংযোগ বন্ধ' : 'Closed'}</span>
+                </>
+              ) : isOverpaying ? (
+                <>
+                  <AlertCircle className="w-3.5 h-3.5 text-white animate-pulse" />
+                  <span>{isBn ? 'টাকা বেশি লিখেছেন' : 'Excess Amount'}</span>
+                </>
+              ) : cooldownSeconds > 0 ? (
+                <>
+                  <Clock className="w-3.5 h-3.5 animate-pulse" />
+                  <span>{isBn ? `অপেক্ষা (${formatCooldownTime(cooldownSeconds)})` : `Wait (${formatCooldownTime(cooldownSeconds)})`}</span>
+                </>
+              ) : (
+                <>
+                  <Check className="w-3.5 h-3.5" />
+                  <span>{isBn ? `আদায় নিশ্চিত (${formatCurrency(numAmount)})` : `Confirm (${formatCurrency(numAmount)})`}</span>
+                </>
+              )}
+            </button>
+          </div>
 
         </form>
 

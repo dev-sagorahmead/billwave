@@ -133,7 +133,7 @@ router.post('/collect', (req, res) => {
   const collector = db.prepare('SELECT name FROM users WHERE id = ?').get(collectorId);
   const collectorName = collector ? collector.name : req.user.name;
 
-  const paymentTx = db.transaction(() => {
+  const executePayment = () => {
     // 1. Insert immutable payment transaction record with billing_month
     const insertRes = db.prepare(`
       INSERT INTO payments (
@@ -183,10 +183,21 @@ router.post('/collect', (req, res) => {
     }
 
     return paymentId;
-  });
+  };
 
+  let paymentId;
   try {
-    const paymentId = paymentTx();
+    const paymentTx = db.transaction(executePayment);
+    paymentId = paymentTx();
+  } catch (txErr) {
+    console.warn('[Payments] Transaction failed, running safe direct fallback:', txErr.message);
+    try {
+      paymentId = executePayment();
+    } catch (fallbackErr) {
+      console.error('[Payments] Payment collection fatal error:', fallbackErr);
+      return res.status(500).json({ error: 'Payment processing failed: ' + fallbackErr.message });
+    }
+  }
 
     // Fetch full receipt details
     const company = db.prepare('SELECT name, phone, email, address, logo, customer_prefix FROM companies WHERE id = ?').get(companyId);

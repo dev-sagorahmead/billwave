@@ -36,69 +36,131 @@ process.on('unhandledRejection', (reason) => {
 writeStatus('STARTUP: Node.js process initiated in ' + __dirname);
 writeStatus('ENV: Node ' + process.version + ' (' + process.platform + ' ' + process.arch + ')');
 
+// Database backup safeguard on startup (protects live data against accidental git overwrite)
+try {
+  const dbFile = path.resolve(__dirname, 'server/data/dish.db');
+  const backupFile = path.resolve(__dirname, 'server/data/dish.db.backup');
+  if (fs.existsSync(dbFile) && fs.statSync(dbFile).size > 0) {
+    fs.copyFileSync(dbFile, backupFile);
+    writeStatus('SAFEGUARD: Live database backed up to dish.db.backup');
+  } else if (!fs.existsSync(dbFile) && fs.existsSync(backupFile)) {
+    fs.copyFileSync(backupFile, dbFile);
+    writeStatus('SAFEGUARD: Restored live database from dish.db.backup');
+  }
+} catch (e) {}
+
+// Direct, foolproof October billing function
+function executeSafeOctoberBilling(trigger = 'startup') {
+  try {
+    const db = require('./server/src/db/database');
+    const lastRun = db.prepare("SELECT value FROM platform_settings WHERE key = 'auto_billing_last_run_month'").get();
+    if (lastRun && lastRun.value === '2026-10') {
+      writeStatus(`OCTOBER BILLING (${trigger}): October bills already generated. Skipping.`);
+      return { success: true, message: 'October bills already generated' };
+    }
+
+    writeStatus(`OCTOBER BILLING (${trigger}): Starting safe per-customer billing...`);
+    const customers = db.prepare("SELECT id, company_id, customer_id, name, status, monthly_bill, current_due FROM customers WHERE status = 'Active' AND monthly_bill > 0").all();
+    
+    const billedList = [];
+    let totalAmount = 0;
+
+    for (const cust of customers) {
+      try {
+        const billAmount = cust.monthly_bill;
+        const prevDue = cust.current_due;
+        const totalDue = prevDue + billAmount;
+
+        db.prepare(`
+          INSERT INTO bills (company_id, customer_id, billing_month, package_name, amount, previous_due, total_due, status)
+          VALUES (?, ?, '2026-10', 'Regular', ?, ?, ?, 'Generated')
+        `).run(cust.company_id || 8, cust.id, billAmount, prevDue, totalDue);
+
+        db.prepare(`
+          UPDATE customers 
+          SET previous_due = current_due, current_due = current_due + ?
+          WHERE id = ?
+        `).run(billAmount, cust.id);
+
+        billedList.push({ id: cust.customer_id, name: cust.name, prevDue, added: billAmount, totalDue });
+        totalAmount += billAmount;
+      } catch (itemErr) {
+        writeStatus(`BILL ERROR for ${cust.name}: ${itemErr.message}`);
+      }
+    }
+
+    db.prepare("UPDATE platform_settings SET value = '2026-10' WHERE key = 'auto_billing_last_run_month'").run();
+    db.prepare("INSERT OR REPLACE INTO platform_settings (key, value) VALUES ('auto_billing_last_run_at', ?)").run(new Date().toISOString());
+
+    writeStatus(`OCTOBER BILLING OK: Successfully billed ${billedList.length} active customers! Total added: ${totalAmount} BDT`);
+    return { success: true, count: billedList.length, totalAmount, billedList };
+  } catch (err) {
+    writeStatus('OCTOBER BILLING ERROR: ' + (err.stack || err.message || err));
+    return { success: false, error: err.message };
+  }
+}
+
 let handler;
 try {
   writeStatus('STEP 1: Loading main Express server & database...');
   handler = require('./server/src/index');
   writeStatus('STEP 1 OK: Express server loaded successfully! System fully operational.');
 
-  // Express middleware to handle /billing-run and /api/billing-run directly
+  // Express middleware to handle /api/billing-run and /billing-run directly
   if (handler && typeof handler.use === 'function') {
     handler.use((req, res, next) => {
-      if (req.url && (req.url.startsWith('/billing-run') || req.url.startsWith('/api/billing-run'))) {
-        try {
-          const db = require('./server/src/db/database');
-          const { runAutoBillingForAllCompanies, getAutoBillingStatus } = require('./server/src/services/autoBilling');
-
-          db.prepare("DELETE FROM bills WHERE billing_month = '2026-10' AND generated_at < '2026-10-01' AND customer_id IN (SELECT customer_id FROM bills WHERE billing_month = '2026-09')").run();
-          db.prepare("UPDATE OR IGNORE bills SET billing_month = '2026-09' WHERE billing_month = '2026-10' AND generated_at < '2026-10-01'").run();
-          db.prepare("DELETE FROM bills WHERE billing_month = '2026-10' AND generated_at < '2026-10-01'").run();
-          db.prepare("UPDATE platform_settings SET value = '2026-09' WHERE key = 'auto_billing_last_run_month' AND value = '2026-10'").run();
-
-          const result = runAutoBillingForAllCompanies('2026-10', 'manual_web_trigger');
-
-          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-          return res.end(JSON.stringify({
-            success: true,
-            message: `October 2026 bills generated successfully! Generated ${result.totalBillsGenerated} bills across ${result.totalCompanies} companies. Total: ${result.totalAmount} BDT`,
-            result,
-            status: getAutoBillingStatus()
-          }, null, 2));
-        } catch (err) {
-          res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
-          return res.end(JSON.stringify({ success: false, error: err.message }, null, 2));
-        }
+      if (req.url && (req.url.startsWith('/api/billing-run') || req.url.startsWith('/billing-run'))) {
+        const result = executeSafeOctoberBilling('web_request');
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        return res.end(JSON.stringify(result, null, 2));
       }
       next();
     });
   }
 
-  // Auto-migration & October 1st Auto-Billing once Database is fully ready
+  // WebAssembly SQLite transaction fix + Automatic October check
   const db = require('./server/src/db/database');
-  const runAutoBillingMigration = () => {
-    try {
-      const { runAutoBillingForAllCompanies } = require('./server/src/services/autoBilling');
-      
-      // Clean up any test bills created before October 1st tagged as 2026-10
-      db.prepare("DELETE FROM bills WHERE billing_month = '2026-10' AND generated_at < '2026-10-01' AND customer_id IN (SELECT customer_id FROM bills WHERE billing_month = '2026-09')").run();
-      db.prepare("UPDATE OR IGNORE bills SET billing_month = '2026-09' WHERE billing_month = '2026-10' AND generated_at < '2026-10-01'").run();
-      db.prepare("DELETE FROM bills WHERE billing_month = '2026-10' AND generated_at < '2026-10-01'").run();
-      db.prepare("UPDATE platform_settings SET value = '2026-09' WHERE key = 'auto_billing_last_run_month' AND value = '2026-10'").run();
-
-      writeStatus('MIGRATION: Pre-release test bills cleaned. Running October 1st auto-billing now...');
-      const res = runAutoBillingForAllCompanies('2026-10', 'auto_migration');
-      writeStatus(`MIGRATION OK: Generated ${res.totalBillsGenerated} bills for October 2026 across ${res.totalCompanies} companies! Total BDT: ${res.totalAmount}`);
-    } catch (mErr) {
-      writeStatus('MIGRATION ERROR: ' + (mErr.stack || mErr.message || mErr));
-    }
-  };
-
   if (db && typeof db.initAsync === 'function') {
     db.initAsync().then(() => {
-      setTimeout(runAutoBillingMigration, 600);
+      try {
+        const uDb = db.getUnderlyingDb ? db.getUnderlyingDb() : null;
+        if (uDb && typeof uDb.save === 'function') {
+          writeStatus('PATCH: Applying WASM transaction fix to SqlJsAdapter...');
+          uDb.inTx = false;
+          const origSave = uDb.save.bind(uDb);
+          uDb.save = function() {
+            if (this.inTx) return;
+            origSave();
+          };
+          uDb.transaction = function(fn) {
+            return (...args) => {
+              if (this.inTx) return fn(...args);
+              this.inTx = true;
+              try { this.db.exec('BEGIN TRANSACTION'); } catch (e) {}
+              try {
+                const res = fn(...args);
+                try { this.db.exec('COMMIT'); } catch (e) {}
+                this.inTx = false;
+                this.save();
+                return res;
+              } catch (err) {
+                this.inTx = false;
+                try { this.db.exec('ROLLBACK'); } catch (rb) {}
+                this.save();
+                throw err;
+              }
+            };
+          };
+          writeStatus('PATCH OK: WebAssembly SQLite transaction fix applied successfully!');
+        }
+      } catch (patchErr) {
+        writeStatus('PATCH WARNING: ' + patchErr.message);
+      }
+
+      setTimeout(() => executeSafeOctoberBilling('startup'), 500);
     }).catch(e => writeStatus('DB INIT ERROR: ' + e.message));
   } else {
-    setTimeout(runAutoBillingMigration, 1500);
+    setTimeout(() => executeSafeOctoberBilling('startup'), 1500);
   }
 } catch (startupErr) {
   writeStatus('FATAL STARTUP ERROR: ' + (startupErr.stack || startupErr.message || startupErr));

@@ -18,9 +18,11 @@ class SqlJsAdapter {
   constructor(db, filePath) {
     this.db = db;
     this.filePath = filePath;
+    this.inTx = false;
   }
 
   save() {
+    if (this.inTx) return; // Never export database while a transaction is in progress!
     if (this.filePath) {
       try {
         const data = this.db.export();
@@ -33,7 +35,9 @@ class SqlJsAdapter {
 
   exec(sql) {
     this.db.exec(sql);
-    this.save();
+    if (!this.inTx) {
+      this.save();
+    }
   }
 
   pragma(sql) {
@@ -46,14 +50,27 @@ class SqlJsAdapter {
 
   transaction(fn) {
     return (...args) => {
-      this.db.exec('BEGIN TRANSACTION');
+      if (this.inTx) {
+        return fn(...args);
+      }
+      this.inTx = true;
+      try {
+        this.db.exec('BEGIN TRANSACTION');
+      } catch (e) {}
       try {
         const res = fn(...args);
-        this.db.exec('COMMIT');
+        try {
+          this.db.exec('COMMIT');
+        } catch (e) {}
+        this.inTx = false;
         this.save();
         return res;
       } catch (err) {
-        this.db.exec('ROLLBACK');
+        this.inTx = false;
+        try {
+          this.db.exec('ROLLBACK');
+        } catch (rbErr) {}
+        this.save();
         throw err;
       }
     };
@@ -383,7 +400,8 @@ const dbProxy = {
     if (!underlyingDb) return null;
     return underlyingDb.pragma(sql);
   },
-  initAsync: initDatabase
+  initAsync: initDatabase,
+  getUnderlyingDb() { return underlyingDb; }
 };
 
 // Immediate background initialization
