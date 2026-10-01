@@ -155,66 +155,11 @@ function executeSafeOctoberBilling(trigger = 'startup') {
   }
 }
 
-let handler;
+let expressApp;
 try {
   writeStatus('STEP 1: Loading main Express server & database...');
-  handler = require('./server/src/index');
+  expressApp = require('./server/src/index');
   writeStatus('STEP 1 OK: Express server loaded successfully! System fully operational.');
-
-  // Express middleware to handle /api/billing-run and /api/git-sync directly
-  if (handler && typeof handler.use === 'function') {
-    handler.use((req, res, next) => {
-      // 1. One-click Git deploy sync from GitHub
-      if (req.url && (req.url.startsWith('/api/git-sync') || req.url.startsWith('/api/deploy-sync'))) {
-        try {
-          const { execSync } = require('child_process');
-          writeStatus('GIT SYNC: Triggered via web request...');
-          const dbFile = path.resolve(__dirname, 'server/data/dish.db');
-          const backupFile = path.resolve(__dirname, 'server/data/dish.db.backup');
-          if (fs.existsSync(dbFile) && fs.statSync(dbFile).size > 0) {
-            fs.copyFileSync(dbFile, backupFile);
-          }
-          
-          let gitOut = '';
-          try {
-            gitOut += execSync('git stash', { cwd: __dirname, encoding: 'utf8' }) + '\n';
-          } catch (e) {}
-          
-          gitOut += execSync('git pull origin main', { cwd: __dirname, encoding: 'utf8' });
-          
-          if (fs.existsSync(backupFile)) {
-            fs.copyFileSync(backupFile, dbFile);
-          }
-
-          writeStatus('GIT SYNC OK: ' + gitOut);
-          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify({ 
-            success: true, 
-            message: 'Repository updated from GitHub successfully! Reloading server in 1 second...', 
-            gitOut 
-          }, null, 2));
-
-          setTimeout(() => {
-            writeStatus('SERVER RESTART: Process exiting to reload fresh code...');
-            process.exit(0);
-          }, 800);
-          return;
-        } catch (syncErr) {
-          writeStatus('GIT SYNC ERROR: ' + syncErr.message);
-          res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
-          return res.end(JSON.stringify({ success: false, error: syncErr.message }, null, 2));
-        }
-      }
-
-      // 2. Safe billing trigger
-      if (req.url && (req.url.startsWith('/api/billing-run') || req.url.startsWith('/billing-run'))) {
-        const result = executeSafeOctoberBilling('web_request');
-        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-        return res.end(JSON.stringify(result, null, 2));
-      }
-      next();
-    });
-  }
 
   // WebAssembly SQLite in-memory transaction patch + Automatic October check
   const db = require('./server/src/db/database');
@@ -262,48 +207,92 @@ try {
   }
 } catch (startupErr) {
   writeStatus('FATAL STARTUP ERROR: ' + (startupErr.stack || startupErr.message || startupErr));
-  
-  handler = (req, res) => {
+}
+
+// Master Passenger / LiteSpeed Request Dispatcher (Intercepts /api/git-sync and /api/billing-run before Express)
+function masterHandler(req, res) {
+  // 1. One-click Git deploy sync from GitHub
+  if (req.url && (req.url.startsWith('/api/git-sync') || req.url.startsWith('/api/deploy-sync'))) {
+    try {
+      const { execSync } = require('child_process');
+      writeStatus('GIT SYNC: Triggered via web request...');
+      
+      const dbFile = path.resolve(__dirname, 'server/data/dish.db');
+      const backupFile = path.resolve(__dirname, 'server/data/dish.db.backup');
+      if (fs.existsSync(dbFile) && fs.statSync(dbFile).size > 0) {
+        fs.copyFileSync(dbFile, backupFile);
+      }
+      
+      let gitOut = '';
+      try {
+        gitOut += execSync('git stash', { cwd: __dirname, encoding: 'utf8' }) + '\n';
+      } catch (e) {}
+      
+      try {
+        gitOut += execSync('git pull origin main', { cwd: __dirname, encoding: 'utf8' });
+      } catch (pullErr) {
+        gitOut += 'Git pull output: ' + pullErr.message;
+      }
+      
+      if (fs.existsSync(backupFile)) {
+        fs.copyFileSync(backupFile, dbFile);
+      }
+
+      writeStatus('GIT SYNC FINISHED: ' + gitOut);
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ 
+        success: true, 
+        message: 'Repository updated from GitHub successfully! Reloading server in 1 second...', 
+        gitOut 
+      }, null, 2));
+
+      setTimeout(() => {
+        writeStatus('SERVER RESTART: Process exiting to reload fresh code...');
+        try {
+          const { exec } = require('child_process');
+          exec('kill -9 -1');
+        } catch (e) {
+          process.exit(0);
+        }
+      }, 800);
+      return;
+    } catch (syncErr) {
+      writeStatus('GIT SYNC ERROR: ' + syncErr.message);
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+      return res.end(JSON.stringify({ success: false, error: syncErr.message }, null, 2));
+    }
+  }
+
+  // 2. Safe billing trigger
+  if (req.url && (req.url.startsWith('/api/billing-run') || req.url.startsWith('/billing-run'))) {
+    const result = executeSafeOctoberBilling('web_request');
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    return res.end(JSON.stringify(result, null, 2));
+  }
+
+  // If expressApp failed to load, show diagnostic page
+  if (typeof expressApp !== 'function') {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.end(`
+    return res.end(`
       <!DOCTYPE html>
       <html>
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>BillWave Diagnostic</title>
-      </head>
-      <body style="font-family: sans-serif; background: #0f172a; color: #f8fafc; padding: 30px; margin: 0;">
-        <div style="max-width: 800px; margin: 0 auto; background: #1e293b; border: 1px solid #ef4444; border-radius: 12px; padding: 24px; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
-          <h2 style="color: #ef4444; margin-top: 0; display: flex; align-items: center; gap: 8px;">
-            <span>🚨</span> BillWave Server Diagnostics
-          </h2>
-          <p style="color: #cbd5e1; font-size: 15px;">
-            LiteSpeed ও Node.js চালু হয়েছে, তবে মডিউল লোড করার সময় সমস্যা হয়েছে:
-          </p>
-          <pre style="background: #090d16; color: #fca5a5; padding: 16px; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; font-size: 13px; border: 1px solid #334155;">${startupErr.stack || startupErr.message || startupErr}</pre>
-          <hr style="border: 0; border-top: 1px solid #334155; margin: 20px 0;">
-          <div style="color: #64748b; font-size: 12px; display: flex; justify-content: space-between;">
-            <span>Node: ${process.version}</span>
-            <span>Platform: ${process.platform}</span>
-          </div>
-        </div>
+      <body style="font-family: sans-serif; background: #0f172a; color: #f8fafc; padding: 30px;">
+        <h2>🚨 BillWave Server Diagnostics</h2>
+        <p>App is starting or encountered an issue. Please refresh in a moment.</p>
       </body>
       </html>
     `);
-  };
+  }
+
+  // Pass everything else directly to Express!
+  return expressApp(req, res);
 }
 
-const server = http.createServer(handler);
-
+const server = http.createServer(masterHandler);
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   writeStatus('SERVER: listening on ' + PORT);
 });
 
-if (typeof handler === 'function') {
-  handler.listen = (...args) => server.listen(...args);
-  module.exports = handler;
-} else {
-  module.exports = server;
-}
+masterHandler.listen = (...args) => server.listen(...args);
+module.exports = masterHandler;

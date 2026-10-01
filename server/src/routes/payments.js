@@ -187,17 +187,13 @@ router.post('/collect', (req, res) => {
 
   let paymentId;
   try {
-    const paymentTx = db.transaction(executePayment);
-    paymentId = paymentTx();
-  } catch (txErr) {
-    console.warn('[Payments] Transaction failed, running safe direct fallback:', txErr.message);
     try {
+      const paymentTx = db.transaction(executePayment);
+      paymentId = paymentTx();
+    } catch (txErr) {
+      console.warn('[Payments] Transaction failed, running safe direct fallback:', txErr.message);
       paymentId = executePayment();
-    } catch (fallbackErr) {
-      console.error('[Payments] Payment collection fatal error:', fallbackErr);
-      return res.status(500).json({ error: 'Payment processing failed: ' + fallbackErr.message });
     }
-  }
 
     // Fetch full receipt details
     const company = db.prepare('SELECT name, phone, email, address, logo, customer_prefix FROM companies WHERE id = ?').get(companyId);
