@@ -42,6 +42,37 @@ try {
   handler = require('./server/src/index');
   writeStatus('STEP 1 OK: Express server loaded successfully! System fully operational.');
 
+  // Express middleware to handle /billing-run and /api/billing-run directly
+  if (handler && typeof handler.use === 'function') {
+    handler.use((req, res, next) => {
+      if (req.url && (req.url.startsWith('/billing-run') || req.url.startsWith('/api/billing-run'))) {
+        try {
+          const db = require('./server/src/db/database');
+          const { runAutoBillingForAllCompanies, getAutoBillingStatus } = require('./server/src/services/autoBilling');
+
+          db.prepare("DELETE FROM bills WHERE billing_month = '2026-10' AND generated_at < '2026-10-01' AND customer_id IN (SELECT customer_id FROM bills WHERE billing_month = '2026-09')").run();
+          db.prepare("UPDATE OR IGNORE bills SET billing_month = '2026-09' WHERE billing_month = '2026-10' AND generated_at < '2026-10-01'").run();
+          db.prepare("DELETE FROM bills WHERE billing_month = '2026-10' AND generated_at < '2026-10-01'").run();
+          db.prepare("UPDATE platform_settings SET value = '2026-09' WHERE key = 'auto_billing_last_run_month' AND value = '2026-10'").run();
+
+          const result = runAutoBillingForAllCompanies('2026-10', 'manual_web_trigger');
+
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+          return res.end(JSON.stringify({
+            success: true,
+            message: `October 2026 bills generated successfully! Generated ${result.totalBillsGenerated} bills across ${result.totalCompanies} companies. Total: ${result.totalAmount} BDT`,
+            result,
+            status: getAutoBillingStatus()
+          }, null, 2));
+        } catch (err) {
+          res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+          return res.end(JSON.stringify({ success: false, error: err.message }, null, 2));
+        }
+      }
+      next();
+    });
+  }
+
   // Auto-migration & October 1st Auto-Billing once Database is fully ready
   const db = require('./server/src/db/database');
   const runAutoBillingMigration = () => {
@@ -64,8 +95,7 @@ try {
 
   if (db && typeof db.initAsync === 'function') {
     db.initAsync().then(() => {
-      // Delay slightly so db schema and default settings commit cleanly
-      setTimeout(runAutoBillingMigration, 500);
+      setTimeout(runAutoBillingMigration, 600);
     }).catch(e => writeStatus('DB INIT ERROR: ' + e.message));
   } else {
     setTimeout(runAutoBillingMigration, 1500);
@@ -104,35 +134,7 @@ try {
   };
 }
 
-// Master request wrapper: handles /billing-run and passes through to Express
-const server = http.createServer((req, res) => {
-  if (req.url && (req.url.startsWith('/api/billing-run') || req.url.startsWith('/billing-run'))) {
-    try {
-      const db = require('./server/src/db/database');
-      const { runAutoBillingForAllCompanies, getAutoBillingStatus } = require('./server/src/services/autoBilling');
-      
-      db.prepare("DELETE FROM bills WHERE billing_month = '2026-10' AND generated_at < '2026-10-01' AND customer_id IN (SELECT customer_id FROM bills WHERE billing_month = '2026-09')").run();
-      db.prepare("UPDATE OR IGNORE bills SET billing_month = '2026-09' WHERE billing_month = '2026-10' AND generated_at < '2026-10-01'").run();
-      db.prepare("DELETE FROM bills WHERE billing_month = '2026-10' AND generated_at < '2026-10-01'").run();
-      db.prepare("UPDATE platform_settings SET value = '2026-09' WHERE key = 'auto_billing_last_run_month' AND value = '2026-10'").run();
-      
-      const result = runAutoBillingForAllCompanies('2026-10', 'manual_web_trigger');
-      
-      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-      return res.end(JSON.stringify({
-        success: true,
-        message: `October 2026 bills generated successfully! Generated ${result.totalBillsGenerated} bills across ${result.totalCompanies} companies. Total: ${result.totalAmount} BDT`,
-        result,
-        status: getAutoBillingStatus()
-      }, null, 2));
-    } catch (err) {
-      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
-      return res.end(JSON.stringify({ success: false, error: err.message }, null, 2));
-    }
-  }
-
-  handler(req, res);
-});
+const server = http.createServer(handler);
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
