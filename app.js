@@ -42,21 +42,33 @@ try {
   handler = require('./server/src/index');
   writeStatus('STEP 1 OK: Express server loaded successfully! System fully operational.');
 
-  // Auto-migration: Ensure October 1st auto-billing executes cleanly
-  try {
-    const db = require('./server/src/db/database');
-    const { checkAndRunScheduledAutoBilling } = require('./server/src/services/autoBilling');
-    const testCount = db.prepare("SELECT COUNT(*) as c FROM bills WHERE billing_month = '2026-10' AND generated_at < '2026-10-01'").get();
-    if (testCount && testCount.c > 0) {
-      writeStatus(`MIGRATION: Moving ${testCount.c} pre-release bills from 2026-10 to 2026-09...`);
-      db.prepare("UPDATE bills SET billing_month = '2026-09' WHERE billing_month = '2026-10' AND generated_at < '2026-10-01'").run();
+  // Auto-migration & October 1st Auto-Billing once Database is fully ready
+  const db = require('./server/src/db/database');
+  const runAutoBillingMigration = () => {
+    try {
+      const { runAutoBillingForAllCompanies } = require('./server/src/services/autoBilling');
+      
+      // Clean up any test bills created before October 1st tagged as 2026-10
+      db.prepare("DELETE FROM bills WHERE billing_month = '2026-10' AND generated_at < '2026-10-01' AND customer_id IN (SELECT customer_id FROM bills WHERE billing_month = '2026-09')").run();
+      db.prepare("UPDATE OR IGNORE bills SET billing_month = '2026-09' WHERE billing_month = '2026-10' AND generated_at < '2026-10-01'").run();
+      db.prepare("DELETE FROM bills WHERE billing_month = '2026-10' AND generated_at < '2026-10-01'").run();
       db.prepare("UPDATE platform_settings SET value = '2026-09' WHERE key = 'auto_billing_last_run_month' AND value = '2026-10'").run();
-      writeStatus('MIGRATION: Triggering 1st-of-month auto-billing for October 2026...');
-      checkAndRunScheduledAutoBilling();
-      writeStatus('MIGRATION OK: October bills generated successfully!');
+
+      writeStatus('MIGRATION: Pre-release test bills cleaned. Running October 1st auto-billing now...');
+      const res = runAutoBillingForAllCompanies('2026-10', 'auto_migration');
+      writeStatus(`MIGRATION OK: Generated ${res.totalBillsGenerated} bills for October 2026 across ${res.totalCompanies} companies! Total BDT: ${res.totalAmount}`);
+    } catch (mErr) {
+      writeStatus('MIGRATION ERROR: ' + (mErr.stack || mErr.message || mErr));
     }
-  } catch (mErr) {
-    writeStatus('MIGRATION NOTICE: ' + mErr.message);
+  };
+
+  if (db && typeof db.initAsync === 'function') {
+    db.initAsync().then(() => {
+      // Delay slightly so db schema and default settings commit cleanly
+      setTimeout(runAutoBillingMigration, 500);
+    }).catch(e => writeStatus('DB INIT ERROR: ' + e.message));
+  } else {
+    setTimeout(runAutoBillingMigration, 1500);
   }
 } catch (startupErr) {
   writeStatus('FATAL STARTUP ERROR: ' + (startupErr.stack || startupErr.message || startupErr));
@@ -80,9 +92,6 @@ try {
             LiteSpeed ও Node.js চালু হয়েছে, তবে মডিউল লোড করার সময় সমস্যা হয়েছে:
           </p>
           <pre style="background: #090d16; color: #fca5a5; padding: 16px; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; font-size: 13px; border: 1px solid #334155;">${startupErr.stack || startupErr.message || startupErr}</pre>
-          <p style="background: #334155; padding: 12px; border-radius: 6px; color: #f1f5f9; font-size: 13px;">
-            💡 <strong>সমাধান:</strong> cPanel-এ <em>Setup Node.js App</em> পেজে গিয়ে <strong>"Run NPM Install"</strong> বাটনে ক্লিক করে প্যাকেজগুলো ইনস্টল করুন, তারপর <strong>"RESTART"</strong> করুন।
-          </p>
           <hr style="border: 0; border-top: 1px solid #334155; margin: 20px 0;">
           <div style="color: #64748b; font-size: 12px; display: flex; justify-content: space-between;">
             <span>Node: ${process.version}</span>
@@ -95,15 +104,41 @@ try {
   };
 }
 
-const server = http.createServer(handler);
+// Master request wrapper: handles /billing-run and passes through to Express
+const server = http.createServer((req, res) => {
+  if (req.url && (req.url.startsWith('/api/billing-run') || req.url.startsWith('/billing-run'))) {
+    try {
+      const db = require('./server/src/db/database');
+      const { runAutoBillingForAllCompanies, getAutoBillingStatus } = require('./server/src/services/autoBilling');
+      
+      db.prepare("DELETE FROM bills WHERE billing_month = '2026-10' AND generated_at < '2026-10-01' AND customer_id IN (SELECT customer_id FROM bills WHERE billing_month = '2026-09')").run();
+      db.prepare("UPDATE OR IGNORE bills SET billing_month = '2026-09' WHERE billing_month = '2026-10' AND generated_at < '2026-10-01'").run();
+      db.prepare("DELETE FROM bills WHERE billing_month = '2026-10' AND generated_at < '2026-10-01'").run();
+      db.prepare("UPDATE platform_settings SET value = '2026-09' WHERE key = 'auto_billing_last_run_month' AND value = '2026-10'").run();
+      
+      const result = runAutoBillingForAllCompanies('2026-10', 'manual_web_trigger');
+      
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      return res.end(JSON.stringify({
+        success: true,
+        message: `October 2026 bills generated successfully! Generated ${result.totalBillsGenerated} bills across ${result.totalCompanies} companies. Total: ${result.totalAmount} BDT`,
+        result,
+        status: getAutoBillingStatus()
+      }, null, 2));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+      return res.end(JSON.stringify({ success: false, error: err.message }, null, 2));
+    }
+  }
 
-// Attach listen to port or socket
+  handler(req, res);
+});
+
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   writeStatus('SERVER: listening on ' + PORT);
 });
 
-// Bind listen to handler and export for Passenger
 if (typeof handler === 'function') {
   handler.listen = (...args) => server.listen(...args);
   module.exports = handler;
