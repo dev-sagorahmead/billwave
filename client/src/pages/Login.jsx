@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useNavigate } from 'react-router-dom';
-import { api } from '../utils/api';
+import { api, getImageUrl } from '../utils/api';
 import { 
   Lock, Eye, EyeOff, Loader2, Check, MessageCircle, Phone, X
 } from 'lucide-react';
@@ -85,13 +85,14 @@ export default function Login() {
                   : 'bg-white shadow-black/15 border border-white'
               } inline-flex items-center justify-center max-w-[220px]`}>
                 <img 
-                  src={settings.logo} 
+                  src={getImageUrl(settings.logo)} 
                   alt={settings.brandTitle || 'BillWave'} 
                   style={{ height: `${Math.min(Number(settings.logoHeight) || 56, 60)}px` }}
                   className="w-auto object-contain max-w-[200px]"
                   onError={(e) => {
-                    if (e.target.src.indexOf('/billwave-logo.png') === -1) {
-                      e.target.src = '/billwave-logo.png';
+                    const fallback = getImageUrl('/billwave-logo.png');
+                    if (e.target.src !== fallback) {
+                      e.target.src = fallback;
                     }
                   }}
                 />

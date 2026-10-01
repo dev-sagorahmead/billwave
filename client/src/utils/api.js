@@ -10,6 +10,16 @@ const isNative = typeof window !== 'undefined' && (
 export const BACKEND_URL = import.meta.env.VITE_API_URL || (isNative ? 'https://fcnwifi.shop' : '');
 export const API_BASE = `${BACKEND_URL}/api`;
 
+export function getImageUrl(path) {
+  if (!path) return '';
+  if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:') || path.startsWith('blob:')) {
+    return path;
+  }
+  const clean = path.startsWith('/') ? path : `/${path}`;
+  const base = BACKEND_URL || (typeof window !== 'undefined' && window.location.origin ? window.location.origin : 'https://fcnwifi.shop');
+  return `${base}${clean}`;
+}
+
 export function getToken() {
   return localStorage.getItem('dish_auth_token');
 }

@@ -11,3 +11,4 @@ server/data/*.db-wal
 update-fix.zip
 status.txt
 server/data/dish.db.backup
+*.apk

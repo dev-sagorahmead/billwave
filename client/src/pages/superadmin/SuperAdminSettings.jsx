@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { api } from '../../utils/api';
+import { api, getImageUrl } from '../../utils/api';
 import { useLanguage } from '../../context/LanguageContext';
 import { 
   Settings, ImageIcon, Upload, CheckCircle2, AlertCircle, 
@@ -81,12 +81,18 @@ export default function SuperAdminSettings() {
 
       const res = await api.uploadLoginLogo(formData);
       if (res && res.logoUrl) {
-        setSettings(prev => ({
-          ...prev,
+        const newSettings = {
+          ...settings,
           login_logo: res.logoUrl
-        }));
+        };
+        setSettings(newSettings);
+        try {
+          await api.updateSuperAdminSettings(newSettings);
+        } catch (saveErr) {
+          console.warn('Auto-save logo warning:', saveErr);
+        }
         setMessage({
-          text: isBn ? 'লোগো সফলভাবে আপলোড ও আপডেট হয়েছে!' : 'Logo uploaded successfully!',
+          text: isBn ? 'লোগো সফলভাবে আপলোড ও সেভ হয়েছে!' : 'Logo uploaded and saved successfully!',
           type: 'success'
         });
         setTimeout(() => setMessage({ text: '', type: 'success' }), 4000);
@@ -99,17 +105,21 @@ export default function SuperAdminSettings() {
     }
   };
 
-  const handleUseBillWaveDefault = () => {
-    setSettings(prev => ({
-      ...prev,
+  const handleUseBillWaveDefault = async () => {
+    const newSettings = {
+      ...settings,
       login_logo: '/uploads/billwave-logo.png',
       login_logo_bg: 'white',
       login_logo_height: '56',
       login_brand_title: 'BillWave',
       login_brand_subtitle: 'Manage. Collect. Grow.'
-    }));
+    };
+    setSettings(newSettings);
+    try {
+      await api.updateSuperAdminSettings(newSettings);
+    } catch (e) {}
     setMessage({
-      text: isBn ? 'সংযুক্ত BillWave লোগো সিলেক্ট করা হয়েছে! পরিবর্তন সেভ করতে "সেভ করুন" চাপুন।' : 'Connected BillWave logo selected! Click Save to apply.',
+      text: isBn ? 'সংযুক্ত BillWave লোগো সিলেক্ট ও সেভ করা হয়েছে!' : 'Connected BillWave logo applied and saved!',
       type: 'success'
     });
     setTimeout(() => setMessage({ text: '', type: 'success' }), 4000);
@@ -237,13 +247,14 @@ export default function SuperAdminSettings() {
               }`}>
                 {settings.login_logo ? (
                   <img 
-                    src={settings.login_logo} 
+                    src={getImageUrl(settings.login_logo)} 
                     alt="Login Logo Preview" 
                     style={{ height: `${settings.login_logo_height || 56}px` }}
                     className="w-auto object-contain max-w-[180px]"
                     onError={(e) => {
-                      if (e.target.src.indexOf('/billwave-logo.png') === -1) {
-                        e.target.src = '/billwave-logo.png';
+                      const fb = getImageUrl('/billwave-logo.png');
+                      if (e.target.src !== fb) {
+                        e.target.src = fb;
                       }
                     }}
                   />
@@ -584,13 +595,14 @@ export default function SuperAdminSettings() {
                           : 'bg-transparent'
                       } inline-flex items-center justify-center`}>
                         <img 
-                          src={settings.login_logo} 
+                          src={getImageUrl(settings.login_logo)} 
                           alt="Logo Preview" 
                           style={{ height: `${Math.min(Number(settings.login_logo_height) || 40, 38)}px` }}
                           className="w-auto object-contain max-w-[140px]"
                           onError={(e) => {
-                            if (e.target.src.indexOf('/billwave-logo.png') === -1) {
-                              e.target.src = '/billwave-logo.png';
+                            const fb = getImageUrl('/billwave-logo.png');
+                            if (e.target.src !== fb) {
+                              e.target.src = fb;
                             }
                           }}
                         />

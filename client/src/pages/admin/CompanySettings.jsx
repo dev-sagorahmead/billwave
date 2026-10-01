@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { api } from '../../utils/api';
+import { api, getImageUrl } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
 import { 
   Settings, Save, CheckCircle2, Building2, Phone, Mail, MapPin, 
@@ -188,7 +188,7 @@ export default function CompanySettings() {
             {formData.logo ? (
               <div className="flex items-center h-full py-0.5">
                 <img 
-                  src={formData.logo} 
+                  src={getImageUrl(formData.logo)} 
                   alt="Company Logo Preview" 
                   className="h-12 sm:h-14 md:h-[58px] max-h-[58px] w-auto max-w-[220px] sm:max-w-[340px] md:max-w-[420px] object-contain object-left transition-all"
                   onError={(e) => {
@@ -246,7 +246,7 @@ export default function CompanySettings() {
               <div className="flex flex-col items-center gap-3">
                 <div className="w-28 h-28 rounded-2xl bg-white border border-slate-200 p-2 shadow-sm flex items-center justify-center overflow-hidden">
                   <img 
-                    src={formData.logo} 
+                    src={getImageUrl(formData.logo)} 
                     alt="Uploaded Company Logo" 
                     className="w-full h-full object-contain rounded-xl"
                   />

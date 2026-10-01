@@ -6,6 +6,7 @@ import {
   Tv, LogOut, User, Shield, Building2, Wallet
 } from 'lucide-react';
 import MarqueeNoticeBar from './MarqueeNoticeBar';
+import { getImageUrl } from '../utils/api';
 
 export default function Header() {
   const { user, company, logout, returnToSuperAdmin, isSuperImpersonating } = useAuth();
@@ -62,7 +63,7 @@ export default function Header() {
             {company?.logo ? (
               <div className="flex items-center h-full py-0.5">
                 <img 
-                  src={company.logo} 
+                  src={getImageUrl(company.logo)} 
                   alt={company.name || 'Company Logo'} 
                   className="h-12 sm:h-14 md:h-[58px] max-h-[58px] w-auto max-w-[220px] sm:max-w-[340px] md:max-w-[420px] object-contain object-left drop-shadow-2xs transition-all"
                   onError={(e) => {

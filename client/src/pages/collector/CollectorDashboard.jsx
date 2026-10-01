@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { api } from '../../utils/api';
+import { api, getImageUrl } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { useNavigate } from 'react-router-dom';
@@ -74,7 +74,7 @@ export default function CollectorDashboard() {
           <div className="flex-shrink-0">
             {collector.avatar ? (
               <img 
-                src={collector.avatar} 
+                src={getImageUrl(collector.avatar)} 
                 alt={collector.name} 
                 className="w-14 h-14 sm:w-16 sm:h-16 rounded-full object-cover border-2 border-white/90 shadow-md ring-2 ring-emerald-400/40 bg-white" 
               />

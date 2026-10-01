@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { api } from '../../utils/api';
+import { api, getImageUrl } from '../../utils/api';
 import { useLanguage } from '../../context/LanguageContext';
 import { 
   UserCheck, PlusCircle, Phone, Mail, Key, 
@@ -361,7 +361,7 @@ export default function CollectorList() {
                   <div className="relative shrink-0">
                     {col.avatar ? (
                       <img 
-                        src={col.avatar} 
+                        src={getImageUrl(col.avatar)} 
                         alt={col.name} 
                         className="w-12 h-12 rounded-full object-cover border-2 border-emerald-500/50 shadow-xs ring-2 ring-slate-100 bg-white" 
                       />
@@ -506,7 +506,7 @@ export default function CollectorList() {
                   <div className="relative shrink-0">
                     {formData.avatar ? (
                       <img 
-                        src={formData.avatar} 
+                        src={getImageUrl(formData.avatar)} 
                         alt="Preview" 
                         className="w-16 h-16 rounded-full object-cover border-2 border-emerald-500 shadow-sm"
                       />
@@ -675,7 +675,7 @@ export default function CollectorList() {
                   <div className="relative shrink-0">
                     {editingCollector.avatar ? (
                       <img 
-                        src={editingCollector.avatar} 
+                        src={getImageUrl(editingCollector.avatar)} 
                         alt="Preview" 
                         className="w-16 h-16 rounded-full object-cover border-2 border-emerald-500 shadow-sm"
                       />

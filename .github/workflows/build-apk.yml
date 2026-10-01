@@ -9,6 +9,9 @@ on:
       - 'client/**'
       - '.github/workflows/build-apk.yml'
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build Debug APK
@@ -52,10 +55,32 @@ jobs:
           cd client/android
           ./gradlew assembleDebug --stacktrace
 
+      - name: Prepare APK binary
+        run: |
+          cp client/android/app/build/outputs/apk/debug/app-debug.apk BillWave.apk
+
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: BillWave-Android-App-Debug
-          path: client/android/app/build/outputs/apk/debug/app-debug.apk
+          path: BillWave.apk
           if-no-files-found: error
           retention-days: 30
+
+      - name: Create or Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/main'
+        with:
+          tag_name: v1.0.1
+          name: "BillWave Android App v1.0.1"
+          body: |
+            ## BillWave Android Mobile App v1.0.1 🚀
+            
+            ### নতুন আপডেট ও পরিবর্তনসমূহ:
+            - **কাস্টম BillWave অ্যাপ আইকন (App Icon)**: অ্যাপের লোগো থেকে সব রেজোলিউশনের আল্ট্রা-শার্প আইকন তৈরি ও সেট করা হয়েছে।
+            - **কাস্টম স্প্ল্যাশ স্ক্রিন (Splash Screen)**: অ্যাপ ওপেন করার সময় সুন্দর BillWave ব্র্যান্ডেড স্প্ল্যাশ স্ক্রিন।
+            - **ছবি প্রদর্শন সমাধান (Image URL Fix)**: অ্যাপে লগইন লোগো, কোম্পানি লোগো ও কালেক্টরের ছবি এখন সরাসরি লাইভ সার্ভার (https://fcnwifi.shop) থেকে লোড হবে।
+            - **ছবি নির্বাচন ও আপলোড পারমিশন (Permissions Fix)**: অ্যান্ড্রয়েড মিডিয়া, স্টোরেজ ও ক্যামেরা পারমিশন যোগ করা হয়েছে যাতে অ্যাপ থেকে সরাসরি ছবি সিলেক্ট ও আপলোড করা যায়।
+            - **অটো-সেভ (Auto-Save)**: লগইন পেজের লোগো আপলোড করলে সাথে সাথে স্বয়ংক্রিয়ভাবে ডেটাবেজে সংরক্ষিত হয়ে যাবে।
+          files: BillWave.apk
+          token: ${{ secrets.GITHUB_TOKEN }}
