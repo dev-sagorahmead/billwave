@@ -49,6 +49,61 @@ try {
   }
 } catch (e) {}
 
+// Auto-patcher for server files to ensure WebAssembly SQLite transaction fix is permanent on disk
+try {
+  const dbSrcFile = path.resolve(__dirname, 'server/src/db/database.js');
+  if (fs.existsSync(dbSrcFile)) {
+    let dbContent = fs.readFileSync(dbSrcFile, 'utf8');
+    if (!dbContent.includes('this.inTx')) {
+      writeStatus('AUTO-PATCH: Updating database.js with WASM transaction fix...');
+      dbContent = dbContent.replace(
+        "constructor(db, filePath) {\n    this.db = db;\n    this.filePath = filePath;\n  }",
+        "constructor(db, filePath) {\n    this.db = db;\n    this.filePath = filePath;\n    this.inTx = false;\n  }"
+      );
+      dbContent = dbContent.replace(
+        "save() {\n    if (this.filePath) {",
+        "save() {\n    if (this.inTx) return;\n    if (this.filePath) {"
+      );
+      dbContent = dbContent.replace(
+        "exec(sql) {\n    this.db.exec(sql);\n    this.save();\n  }",
+        "exec(sql) {\n    this.db.exec(sql);\n    if (!this.inTx) this.save();\n  }"
+      );
+      dbContent = dbContent.replace(
+        /transaction\(fn\) \{[\s\S]*?return res;\s*\}\s*catch\s*\(err\)\s*\{[\s\S]*?\}\s*;\s*\}/,
+        `transaction(fn) {
+    return (...args) => {
+      if (this.inTx) return fn(...args);
+      this.inTx = true;
+      try { this.db.exec('BEGIN TRANSACTION'); } catch (e) {}
+      try {
+        const res = fn(...args);
+        try { this.db.exec('COMMIT'); } catch (e) {}
+        this.inTx = false;
+        this.save();
+        return res;
+      } catch (err) {
+        this.inTx = false;
+        try { this.db.exec('ROLLBACK'); } catch (rbErr) {}
+        this.save();
+        throw err;
+      }
+    };
+  }`
+      );
+      if (!dbContent.includes('getUnderlyingDb')) {
+        dbContent = dbContent.replace(
+          "initAsync: initDatabase\n};",
+          "initAsync: initDatabase,\n  getUnderlyingDb() { return underlyingDb; }\n};"
+        );
+      }
+      fs.writeFileSync(dbSrcFile, dbContent, 'utf8');
+      writeStatus('AUTO-PATCH: database.js patched successfully!');
+    }
+  }
+} catch (apErr) {
+  writeStatus('AUTO-PATCH WARNING: ' + apErr.message);
+}
+
 // Direct, foolproof October billing function
 function executeSafeOctoberBilling(trigger = 'startup') {
   try {
@@ -106,9 +161,52 @@ try {
   handler = require('./server/src/index');
   writeStatus('STEP 1 OK: Express server loaded successfully! System fully operational.');
 
-  // Express middleware to handle /api/billing-run and /billing-run directly
+  // Express middleware to handle /api/billing-run and /api/git-sync directly
   if (handler && typeof handler.use === 'function') {
     handler.use((req, res, next) => {
+      // 1. One-click Git deploy sync from GitHub
+      if (req.url && (req.url.startsWith('/api/git-sync') || req.url.startsWith('/api/deploy-sync'))) {
+        try {
+          const { execSync } = require('child_process');
+          writeStatus('GIT SYNC: Triggered via web request...');
+          const dbFile = path.resolve(__dirname, 'server/data/dish.db');
+          const backupFile = path.resolve(__dirname, 'server/data/dish.db.backup');
+          if (fs.existsSync(dbFile) && fs.statSync(dbFile).size > 0) {
+            fs.copyFileSync(dbFile, backupFile);
+          }
+          
+          let gitOut = '';
+          try {
+            gitOut += execSync('git stash', { cwd: __dirname, encoding: 'utf8' }) + '\n';
+          } catch (e) {}
+          
+          gitOut += execSync('git pull origin main', { cwd: __dirname, encoding: 'utf8' });
+          
+          if (fs.existsSync(backupFile)) {
+            fs.copyFileSync(backupFile, dbFile);
+          }
+
+          writeStatus('GIT SYNC OK: ' + gitOut);
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ 
+            success: true, 
+            message: 'Repository updated from GitHub successfully! Reloading server in 1 second...', 
+            gitOut 
+          }, null, 2));
+
+          setTimeout(() => {
+            writeStatus('SERVER RESTART: Process exiting to reload fresh code...');
+            process.exit(0);
+          }, 800);
+          return;
+        } catch (syncErr) {
+          writeStatus('GIT SYNC ERROR: ' + syncErr.message);
+          res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+          return res.end(JSON.stringify({ success: false, error: syncErr.message }, null, 2));
+        }
+      }
+
+      // 2. Safe billing trigger
       if (req.url && (req.url.startsWith('/api/billing-run') || req.url.startsWith('/billing-run'))) {
         const result = executeSafeOctoberBilling('web_request');
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -118,7 +216,7 @@ try {
     });
   }
 
-  // WebAssembly SQLite transaction fix + Automatic October check
+  // WebAssembly SQLite in-memory transaction patch + Automatic October check
   const db = require('./server/src/db/database');
   if (db && typeof db.initAsync === 'function') {
     db.initAsync().then(() => {
